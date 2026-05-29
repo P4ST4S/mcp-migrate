@@ -82,22 +82,52 @@ Live HTTP analyzer coverage:
 | Rule id | Phase 2 status | Notes |
 | --- | --- | --- |
 | `server-discover-required` | implemented | Probes `server/discover`; missing, errored, or malformed discovery maps to a finding. |
-| `initialize-handshake-removed` | partial | No `initialize` request is sent. Legacy initialize dependence is inferred from redacted response text. |
+| `initialize-handshake-removed` | partial | HTTP does not send `initialize`. Text mentions are downgraded to `initialize-text-heuristic` warning; stdio sends `initialize` only in an isolated child process after `server/discover` fails. |
 | `protocol-version-per-request` | partial | Sends a read-only `server/discover` request with mismatched HTTP protocol header vs `_meta`; acceptance maps to a finding. |
 | `client-info-capabilities-per-request` | implemented | Sends read-only `tools/list` without `_meta`; acceptance maps to a finding. |
 | `mcp-session-id-removed` | implemented | Detects `Mcp-Session-Id` response header or redacted response-body mention. |
 | `http-standard-headers` | implemented | Sends read-only `tools/list` without `Mcp-Method` and with mismatched `Mcp-Method`; acceptance maps to findings. |
-| `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, `resources/read`, and `prompts/list` results for `ttlMs` and `cacheScope`. |
+| `initialize-text-heuristic` | implemented | HTTP-only weak signal for response text mentioning initialize; warning severity only. |
+| `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, and `prompts/list` by default. `resources/read` is checked only when explicitly opted in. |
 | `session-dependent-lists-removed` | not started | Deferred to Phase 4 because it requires cross-connection behavioral comparison. |
 | `x-mcp-header` | not started | Deferred; requires tool schema inspection and header mirroring validation. |
 
 Phase 2 safety posture:
 
-- Probes are read-only by default: `server/discover`, list methods, and `resources/read` only.
+- Probes are read-only by default: `server/discover` and list methods only.
+- `resources/read` is opt-in (`--allow-resource-read`) because real servers may attach side effects to reads.
 - `tools/call` is not sent in Phase 2.
 - `--allow-mutating-probes` exists as an explicit opt-in, but no mutating probes are implemented yet.
 - Raw probe observations are kept in internal `HTTPTrace`/`HTTPObservation` structs; rules convert observations to findings and do not perform network I/O.
 - Output masks URL userinfo and sensitive query values, and never emits authorization headers, raw response headers, raw response bodies, or network error strings.
+
+Live STDIO analyzer coverage:
+
+| Rule id | Phase 3 status | Notes |
+| --- | --- | --- |
+| `server-discover-required` | implemented | Probes `server/discover`; missing, errored, timeout, or malformed discovery maps to a finding. |
+| `initialize-handshake-removed` | implemented | If `server/discover` fails, stdio sends a legacy `initialize` probe to the isolated child process; success maps to a finding. |
+| `client-info-capabilities-per-request` | implemented | Sends read-only `tools/list` without `_meta`; acceptance maps to a finding. |
+| `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, and `prompts/list` results for `ttlMs` and `cacheScope`. |
+
+Phase 3 safety posture:
+
+- The analyzer launches and owns the stdio process, applies a timeout to each RPC, cancels/kills the process on timeout, and waits for process exit.
+- Stderr is drained with a fixed memory bound; stderr content is never emitted.
+- Environment variables are inherited for process execution but never emitted in JSONL or Markdown.
+- Command args are redacted in `source.ref` when they look sensitive.
+- No `tools/call` is sent.
+- The stdio `initialize` probe is allowed because it only affects the disposable child process; this is intentionally different from HTTP remote probing.
+- Raw probe observations are kept in internal `STDIOTrace`/`STDIOObservation` structs; rules convert observations to findings and do not perform process I/O.
+
+Review artifacts:
+
+- `testdata/examples/http-compliant.{jsonl,md}`
+- `testdata/examples/http-legacy.{jsonl,md}`
+- `testdata/examples/http-mixed.{jsonl,md}`
+- `testdata/examples/stdio-compliant.{jsonl,md}`
+- `testdata/examples/stdio-legacy.{jsonl,md}`
+- `testdata/examples/stdio-mixed.{jsonl,md}`
 
 ## Competitive/Community Observations Read
 

@@ -11,8 +11,9 @@ Last updated: 2026-05-29.
 - Phase 0 is implemented and committed in `6cd1ae8` (`chore: scaffold go cli`).
 - Phase 1 is implemented and committed in `4f9b030` (`feat: add report schema and rule registry`).
 - Phase 2 is implemented and committed in `bfe33b0` (`feat: add live http analyzer probes`).
-- Phase 3 and later have not been started.
-- Validation command used after Phase 2: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server` and require permission to bind localhost ports in sandboxed environments.
+- Phase 3 is implemented in the current branch.
+- Phase 4 and later have not been started.
+- Validation command used after Phase 3: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server`; stdio integration tests launch helper processes. Both may require extra permissions in sandboxed environments.
 
 ## Product Decisions
 
@@ -88,7 +89,8 @@ Work:
 - Validate response behavior for:
   protocol-version mismatch, missing headers, header/body mismatch, `tools/list` cache fields, and visible session requirements.
 - Record all raw probe observations in an internal trace structure, then convert to findings through rules.
-- Keep probes read-only by default. Implemented HTTP probes are `server/discover`, `tools/list`, `resources/list`, `prompts/list`, and `resources/read` for a URI returned by `resources/list`.
+- Keep probes read-only by default. Implemented default HTTP probes are `server/discover`, `tools/list`, `resources/list`, and `prompts/list`.
+- `resources/read` is no longer part of the default HTTP probe set because real servers may attach side effects such as consume, mark-as-read, or remote fetch. It is available only with `--allow-resource-read`.
 - Add `--allow-mutating-probes` as an explicit opt-in flag, disabled by default. No mutating HTTP probes are implemented in Phase 2.
 - Redact secrets from output: URL userinfo and sensitive query parameters are masked; response bodies, header values, network errors, and authorization material are not emitted.
 
@@ -99,19 +101,22 @@ Done:
 - Detects missing/ignored required HTTP headers.
 - Detects per-request `_meta` acceptance gaps where probeable.
 - Detects protocol-version header/_meta mismatch acceptance where probeable.
-- Detects `tools/list`, `resources/list`, `resources/read`, and `prompts/list` cache metadata gaps where probeable.
+- Detects `tools/list`, `resources/list`, and `prompts/list` cache metadata gaps by default. Also checks `resources/read` when `--allow-resource-read` is set.
 - Integration tests use `httptest.Server` fixtures for compliant, legacy, and mixed-behavior servers.
 - Tests assert no `tools/call` is sent and no fixture secrets leak into findings.
+- Tests cover false-positive and false-negative cases for HTTP response text that mentions initialize. That signal is `initialize-text-heuristic` with `warning` severity, not proof of a legacy initialize requirement.
 
 Current Phase 2 Limitations:
 
-- The analyzer does not yet probe `Mcp-Name` mismatch for `resources/read`; it sends the required matching header when a resource URI is discoverable.
+- The analyzer does not probe `Mcp-Name` mismatch for `resources/read` by default; `resources/read` is opt-in.
 - The analyzer does not yet classify session-dependent list changes across multiple connections; that belongs to Phase 4 hidden-state detection.
 - The analyzer does not yet inspect `x-mcp-header` tool schema behavior.
 - The analyzer does not yet perform OAuth/auth flow probes.
 - A real-server smoke test is intentionally deferred to a release gate; Phase 2 only requires arbitrary `--url` support and fixture coverage.
 
 ## Phase 3: Live STDIO Analyzer
+
+Status: implemented.
 
 Complexity: L
 
@@ -123,13 +128,26 @@ Work:
 - Implement JSON-RPC request/response correlation with timeouts.
 - Probe `server/discover` first for 2026-07-28 behavior.
 - Fall back to legacy `initialize` probe to classify older servers.
-- Detect use of removed methods (`ping`, legacy resources subscriptions, `initialize`-only flow) and MRTR result shape where observable.
+- Do not send `tools/call` or any other mutating probe.
+- Detect legacy initialize-only flow where observable.
+- Capture stderr with a fixed bound and never emit stderr content.
+- Redact command arguments and never emit environment variables.
+- Keep raw stdio observations in `STDIOTrace`/`STDIOObservation`, then convert to findings through the rule engine.
+
+Decision: stdio sends a legacy `initialize` probe after `server/discover` fails. This intentionally differs from HTTP. Stdio analysis launches an isolated process owned by the analyzer and tears it down after probing, so the legacy handshake mutates only process-scoped state in a disposable child process. HTTP targets may be shared remote servers, so HTTP avoids `initialize` and reports only stronger protocol signals plus weak text heuristics.
 
 Done:
 
 - Handles clean process shutdown and timeout cleanup.
-- Tests use small fake stdio server binaries or Go test helper processes.
-- Findings include exact source mode and command reference without leaking environment secrets.
+- Tests use Go helper processes for compliant, legacy, mixed, and timeout profiles.
+- Findings include source mode and redacted command reference without leaking command secrets, environment values, or stderr content.
+- Tests assert no `tools/call` is sent, helper stderr secrets do not leak, and timeout probes return promptly.
+- `testdata/examples/` contains JSONL and Markdown examples for HTTP compliant/legacy/mixed and stdio compliant/legacy/mixed profiles.
+
+Current Phase 3 Limitations:
+
+- Stdio does not yet probe `ping`, legacy resource subscription methods, or MRTR shapes. Those are still planned follow-up rules for the live stdio analyzer.
+- Stdio command parsing supports simple quoting/escaping but is not a full shell. This is intentional: commands are executed directly without invoking a shell.
 
 ## Phase 4: Hidden State Detector
 

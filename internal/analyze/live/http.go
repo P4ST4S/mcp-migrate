@@ -73,6 +73,7 @@ func ProbeHTTP(opts Options) (HTTPTrace, error) {
 	trace := HTTPTrace{
 		Endpoint:            sanitizeURL(opts.URL),
 		AllowMutatingProbes: opts.AllowMutatingProbes,
+		AllowResourceRead:   opts.AllowResourceRead,
 	}
 	for _, probe := range defaultHTTPProbes(analyzer.specTarget) {
 		if probe.mutating && !opts.AllowMutatingProbes {
@@ -82,7 +83,14 @@ func ProbeHTTP(opts Options) (HTTPTrace, error) {
 		trace.Observations = append(trace.Observations, observation)
 	}
 
-	if uri := firstResourceURI(trace); uri != "" {
+	if opts.AllowResourceRead {
+		// resources/read is behind an explicit opt-in. Some servers may mark
+		// resources as consumed, fetch remote data, or otherwise attach side
+		// effects to reads even when the protocol method name says "read".
+		uri := firstResourceURI(trace)
+		if uri == "" {
+			return trace, nil
+		}
 		probe := resourceReadProbe(analyzer.specTarget, uri)
 		trace.Observations = append(trace.Observations, analyzer.runProbe(context.Background(), probe))
 	}

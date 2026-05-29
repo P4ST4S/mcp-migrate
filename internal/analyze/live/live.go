@@ -15,6 +15,7 @@ type Options struct {
 	ServerCommand       string
 	SpecTarget          string
 	AllowMutatingProbes bool
+	AllowResourceRead   bool
 	HTTPClient          *http.Client
 	Timeout             time.Duration
 }
@@ -32,7 +33,15 @@ func Analyze(opts Options) ([]report.Finding, error) {
 		}
 		return EvaluateHTTPTrace(trace, registry), nil
 	case "stdio":
-		return nil, nil
+		registry, err := rules.DefaultRegistry()
+		if err != nil {
+			return nil, err
+		}
+		trace, err := ProbeSTDIO(opts)
+		if err != nil {
+			return nil, err
+		}
+		return EvaluateSTDIOTrace(trace, registry), nil
 	default:
 		return nil, fmt.Errorf("unsupported transport %q", opts.Transport)
 	}

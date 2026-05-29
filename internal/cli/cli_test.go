@@ -5,16 +5,16 @@ import (
 	"testing"
 )
 
-func TestAnalyzeEmitsEmptyJSONL(t *testing.T) {
+func TestHelpEmitsUsage(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 
-	code := Run([]string{"analyze", "--transport", "stdio", "--server-command", "fixture"}, nil, &stdout, &stderr)
+	code := Run([]string{"help"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d, stderr %q", code, stderr.String())
 	}
-	if got := stdout.String(); got != "" {
-		t.Fatalf("expected empty JSONL output, got %q", got)
+	if got := stdout.String(); got == "" {
+		t.Fatal("expected usage output")
 	}
 }
 

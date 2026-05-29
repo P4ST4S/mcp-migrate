@@ -21,3 +21,32 @@ func TestWriteMarkdownEmpty(t *testing.T) {
 		t.Fatalf("expected deprecation window text, got %q", buf.String())
 	}
 }
+
+func TestWriteMarkdownFindingShowsLocalEnforcementAndSEPVerification(t *testing.T) {
+	findings := []Finding{{
+		Schema:      "mcp-migrate/finding/v1",
+		Rule:        "resource-not-found-code",
+		SEP:         &SEPRef{ID: "SEP-2164", Status: "Draft", Verification: SEPUnverified},
+		Severity:    SeverityBreaking,
+		Enforcement: EnforcementReportOnly,
+		SpecTarget:  "2026-07-28",
+		Source:      Source{Mode: "live", Ref: "fixture"},
+		Message:     "Resource not found uses a legacy error code.",
+	}}
+
+	var buf bytes.Buffer
+	if err := WriteMarkdown(&buf, findings); err != nil {
+		t.Fatalf("WriteMarkdown returned error: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"## resource-not-found-code",
+		"- Severity: `breaking`",
+		"- Enforcement: `report-only`",
+		"- SEP: `SEP-2164` (`Draft`, `unverified`)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected markdown to contain %q, got %q", want, out)
+		}
+	}
+}

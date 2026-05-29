@@ -145,6 +145,15 @@ var defaultRules = []Rule{
 		Remediation: "Carry protocol version, client info, and client capabilities in per-request _meta and expose server/discover.",
 	},
 	{
+		ID:          "initialize-text-heuristic",
+		SEP:         sep("SEP-2575", "Accepted", "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2575-stateless-mcp.md", true),
+		Severity:    report.SeverityWarning,
+		AppliesTo:   []string{"live"},
+		Status:      StatusConfirmed,
+		Message:     "Response text mentions initialize, which is only a weak legacy signal.",
+		Remediation: "Confirm with stronger evidence such as server/discover failure plus a successful legacy initialize probe on an isolated stdio process.",
+	},
+	{
 		ID:          "server-discover-required",
 		SEP:         sep("SEP-2575", "Accepted", "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2575-stateless-mcp.md", true),
 		Severity:    report.SeverityBreaking,

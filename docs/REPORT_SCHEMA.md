@@ -4,7 +4,7 @@ Schema id: `mcp-migrate/finding/v1`
 
 Each JSONL line is one finding object. Empty output is valid JSONL and means no findings were emitted.
 
-Security note: output is sanitized. URL userinfo and sensitive query parameters are redacted; raw authorization headers, cookies, response headers, response bodies, and network error strings are not emitted.
+Security note: output is sanitized. URL userinfo, sensitive query parameters, and sensitive command args are redacted; raw authorization headers, cookies, response headers, response bodies, stderr content, environment variables, and network error strings are not emitted.
 
 ## Fields
 

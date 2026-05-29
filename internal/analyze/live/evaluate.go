@@ -19,7 +19,7 @@ func EvaluateHTTPTrace(trace HTTPTrace, registry *rules.Registry) []report.Findi
 			builder.add("mcp-session-id-removed", "A response indicated Mcp-Session-Id usage. Header values and body content are redacted.")
 		}
 		if obs.BodyMentionsInitialize {
-			builder.add("initialize-handshake-removed", "A response referenced initialize. Body content is redacted.")
+			builder.add("initialize-text-heuristic", "A response mentioned initialize. This is a weak heuristic only; body content is redacted.")
 		}
 	}
 
@@ -130,10 +130,34 @@ func describeObservation(obs HTTPObservation) string {
 func redactDetail(detail string) string {
 	parts := strings.Fields(detail)
 	for i, part := range parts {
+		if !strings.Contains(part, "=") {
+			continue
+		}
 		key := strings.Trim(strings.Split(part, "=")[0], ":,.;()[]{}\"'")
-		if isSensitiveName(key) {
+		if isSensitiveDetailName(key) {
 			parts[i] = key + "=redacted"
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+func isSensitiveDetailName(name string) bool {
+	normalized := strings.ToLower(name)
+	for _, part := range []string{
+		"authorization",
+		"token",
+		"secret",
+		"password",
+		"passwd",
+		"api-key",
+		"apikey",
+		"credential",
+		"cookie",
+		"session",
+	} {
+		if strings.Contains(normalized, part) {
+			return true
+		}
+	}
+	return false
 }

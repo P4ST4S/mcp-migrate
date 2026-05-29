@@ -17,6 +17,7 @@ type AnalyzeOptions struct {
 	Format              string
 	SpecTarget          string
 	AllowMutatingProbes bool
+	AllowResourceRead   bool
 }
 
 func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
@@ -51,6 +52,7 @@ func runAnalyze(args []string, stdout, stderr io.Writer) int {
 		ServerCommand:       opts.ServerCommand,
 		SpecTarget:          opts.SpecTarget,
 		AllowMutatingProbes: opts.AllowMutatingProbes,
+		AllowResourceRead:   opts.AllowResourceRead,
 	})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
@@ -91,6 +93,7 @@ func parseAnalyze(args []string, output io.Writer) (AnalyzeOptions, error) {
 	fs.StringVar(&opts.Format, "format", opts.Format, "output format: jsonl or markdown")
 	fs.StringVar(&opts.SpecTarget, "spec-target", opts.SpecTarget, "target MCP specification version")
 	fs.BoolVar(&opts.AllowMutatingProbes, "allow-mutating-probes", false, "allow probes that may modify server state")
+	fs.BoolVar(&opts.AllowResourceRead, "allow-resource-read", false, "allow resources/read probes; disabled by default because reads can have server-specific side effects")
 
 	if err := fs.Parse(args); err != nil {
 		return AnalyzeOptions{}, err

@@ -8,6 +8,7 @@ import (
 type HTTPTrace struct {
 	Endpoint            string
 	AllowMutatingProbes bool
+	AllowResourceRead   bool
 	Observations        []HTTPObservation
 }
 
