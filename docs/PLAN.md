@@ -12,7 +12,8 @@ Last updated: 2026-05-29.
 - Phase 1 is implemented and committed in `4f9b030` (`feat: add report schema and rule registry`).
 - Phase 2 is implemented and committed in `bfe33b0` (`feat: add live http analyzer probes`).
 - Phase 3 is implemented in the current branch.
-- Phase 4 and later have not been started.
+- Phase 4 is implemented in the current branch.
+- Phase 5 and later have not been started.
 - Validation command used after Phase 3: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server`; stdio integration tests launch helper processes. Both may require extra permissions in sandboxed environments.
 
 ## Product Decisions
@@ -109,7 +110,7 @@ Done:
 Current Phase 2 Limitations:
 
 - The analyzer does not probe `Mcp-Name` mismatch for `resources/read` by default; `resources/read` is opt-in.
-- The analyzer does not yet classify session-dependent list changes across multiple connections; that belongs to Phase 4 hidden-state detection.
+- Session-dependent list drift is now covered by Phase 4 read-only repeated list probes.
 - The analyzer does not yet inspect `x-mcp-header` tool schema behavior.
 - The analyzer does not yet perform OAuth/auth flow probes.
 - A real-server smoke test is intentionally deferred to a release gate; Phase 2 only requires arbitrary `--url` support and fixture coverage.
@@ -151,6 +152,8 @@ Current Phase 3 Limitations:
 
 ## Phase 4: Hidden State Detector
 
+Status: implemented.
+
 Complexity: XL
 
 Dependencies: Phase 2 and Phase 3.
@@ -158,17 +161,23 @@ Dependencies: Phase 2 and Phase 3.
 Work:
 
 - Define live state signatures:
-  session header required, list results change after a stateful call, tool call succeeds only after same-connection setup, cross-request state not represented by tool arguments, and retry to a fresh connection loses required state.
-- For HTTP, run paired probes against independent clients/connections and compare behavior.
-- For STDIO, classify process-lifetime state separately: useful warning, not necessarily direct HTTP non-compliance.
+  session header required, repeated list results changing without explicit handles, cross-request state not represented by tool arguments, and retry to a fresh connection losing required state. Signatures that require a stateful `tools/call` setup are deferred until a dedicated opt-in probe exists.
+- For HTTP, run paired read-only list probes against the existing client and a fresh client/connection, then compare behavior.
+- For STDIO, classify process-lifetime list drift separately: useful warning, not necessarily direct HTTP non-compliance.
 - Add explicit remediation hints: state handles, auth-principal keyed storage, documented TTL, cleanup/list tools.
 
 Done:
 
-- Detects at least one session-keyed HTTP fixture.
-- Detects one stateful stdio fixture as `warning`, not `breaking`.
-- Avoids false positives where state is represented by explicit returned handles.
+- Detects at least one session-keyed HTTP fixture through repeated read-only list drift and reports `session-dependent-lists-removed`.
+- Detects one stateful stdio fixture as `explicit-state-handles` with `warning` severity, not as a breaking HTTP/session finding.
+- Avoids false positives where drift is limited to explicit returned handle fields such as `stateHandle`.
 - Produces concise findings suitable for `jq` filtering.
+
+Current Phase 4 Limitations:
+
+- No `tools/call` state probes are sent by default, so signatures that require a stateful setup call remain out of scope until a dedicated opt-in probe is designed.
+- HTTP state drift is detected from canonicalized list result changes; auth-principal or time-based variation can still require human interpretation.
+- Stdio state drift is intentionally classified as a warning-style process-lifetime signal.
 
 ## Phase 5: Safe Patch Engine
 

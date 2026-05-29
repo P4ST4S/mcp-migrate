@@ -88,6 +88,9 @@ func ProbeSTDIO(opts Options) (STDIOTrace, error) {
 		}
 		trace.Observations = append(trace.Observations, session.runProbe(probe, rpcTimeout))
 	}
+	for _, probe := range stateSTDIOProbes(specTarget) {
+		trace.Observations = append(trace.Observations, session.runProbe(probe, rpcTimeout))
+	}
 
 	trace.StderrBytes = session.stderr.Len()
 	trace.StderrTruncated = session.stderr.Truncated()
@@ -240,6 +243,14 @@ func defaultSTDIOProbes(specTarget string) []stdioProbe {
 		{name: "tools-list-missing-meta", method: "tools/list", params: map[string]any{}, readOnly: true},
 		{name: "resources-list", method: "resources/list", params: paramsWithMeta(specTarget), readOnly: true},
 		{name: "prompts-list", method: "prompts/list", params: paramsWithMeta(specTarget), readOnly: true},
+	}
+}
+
+func stateSTDIOProbes(specTarget string) []stdioProbe {
+	return []stdioProbe{
+		{name: "state-tools-list-repeat", method: "tools/list", params: paramsWithMeta(specTarget), readOnly: true},
+		{name: "state-resources-list-repeat", method: "resources/list", params: paramsWithMeta(specTarget), readOnly: true},
+		{name: "state-prompts-list-repeat", method: "prompts/list", params: paramsWithMeta(specTarget), readOnly: true},
 	}
 }
 

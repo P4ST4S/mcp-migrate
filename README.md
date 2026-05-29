@@ -17,10 +17,10 @@
 - JSONL output, one finding per line.
 - Markdown rendering from the same finding model.
 - Secret redaction in report output.
+- Hidden-state detection for repeated live list probes.
 
 Roadmap, not implemented yet:
 
-- Hidden-state detector.
 - `patch` mode.
 - `watch` mode.
 - Multi-language static scanning.
@@ -84,6 +84,8 @@ Probes are read-only by default:
 - `tools/list`
 - `resources/list`
 - `prompts/list`
+
+Hidden-state detection repeats the same read-only list probes and compares canonicalized results across probe scopes. It does not call tools.
 
 `resources/read` is not executed by default because a real server may attach side effects to a read: consumption, mark-as-read behavior, remote fetching, or other application-specific behavior. To allow it explicitly:
 

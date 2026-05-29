@@ -46,6 +46,21 @@ func TestSTDIOAnalyzeMixedServer(t *testing.T) {
 	assertNoToolCall(t, methods)
 }
 
+func TestSTDIOAnalyzeDetectsProcessLifetimeStateAsWarning(t *testing.T) {
+	findings, methods := runSTDIOAnalyze(t, "stateful", "")
+	assertFinding(t, findings, "explicit-state-handles")
+	assertFindingSeverity(t, findings, "explicit-state-handles", report.SeverityWarning)
+	assertNoFinding(t, findings, "session-dependent-lists-removed")
+	assertNoToolCall(t, methods)
+}
+
+func TestSTDIOAnalyzeDoesNotFlagExplicitHandleOnlyDrift(t *testing.T) {
+	findings, methods := runSTDIOAnalyze(t, "explicit-handle", "")
+	assertNoFinding(t, findings, "explicit-state-handles")
+	assertNoFinding(t, findings, "session-dependent-lists-removed")
+	assertNoToolCall(t, methods)
+}
+
 func TestSTDIOTimeoutKillsProcess(t *testing.T) {
 	start := time.Now()
 	findings, _ := runSTDIOAnalyzeWithTimeout(t, "hang", "", 50*time.Millisecond)
@@ -124,6 +139,7 @@ func runSTDIOHelper(profile string) {
 	scanner := bufio.NewScanner(os.Stdin)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	initialized := false
+	listCounts := make(map[string]int)
 	for scanner.Scan() {
 		var req rpcRequest
 		if err := json.Unmarshal(scanner.Bytes(), &req); err != nil {
@@ -137,6 +153,10 @@ func runSTDIOHelper(profile string) {
 			initialized = handleSTDIOLegacy(req, initialized)
 		case "mixed":
 			handleSTDIOMixed(req)
+		case "stateful":
+			handleSTDIOStateful(req, listCounts, false)
+		case "explicit-handle":
+			handleSTDIOStateful(req, listCounts, true)
 		case "hang":
 			select {}
 		default:
@@ -214,6 +234,26 @@ func handleSTDIOMixed(req rpcRequest) {
 		writeSTDIOResult(req.ID, map[string]any{"resources": []any{}})
 	case "prompts/list":
 		writeSTDIOResult(req.ID, map[string]any{"prompts": []any{}})
+	default:
+		writeSTDIOError(req.ID, -32601, "method not found")
+	}
+}
+
+func handleSTDIOStateful(req rpcRequest, counts map[string]int, explicitHandleOnly bool) {
+	if req.Method != "server/discover" && !hasRequiredMeta(req.Params) {
+		writeSTDIOError(req.ID, -32602, "missing required meta")
+		return
+	}
+	switch req.Method {
+	case "server/discover":
+		writeSTDIOResult(req.ID, map[string]any{
+			"supportedVersions": []string{spec.TargetVersion},
+			"capabilities":      map[string]any{"tools": map[string]any{}, "resources": map[string]any{}, "prompts": map[string]any{}},
+			"serverInfo":        map[string]any{"name": "stdio-stateful", "version": "test"},
+		})
+	case "tools/list", "resources/list", "prompts/list":
+		counts[req.Method]++
+		writeSTDIOResult(req.ID, cacheable(statefulListResult(req.Method, counts[req.Method], explicitHandleOnly)))
 	default:
 		writeSTDIOError(req.ID, -32601, "method not found")
 	}

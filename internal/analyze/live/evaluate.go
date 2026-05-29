@@ -6,6 +6,7 @@ import (
 
 	"github.com/P4ST4S/mcp-migrate/internal/report"
 	"github.com/P4ST4S/mcp-migrate/internal/rules"
+	"github.com/P4ST4S/mcp-migrate/internal/state"
 )
 
 func EvaluateHTTPTrace(trace HTTPTrace, registry *rules.Registry) []report.Finding {
@@ -55,6 +56,10 @@ func EvaluateHTTPTrace(trace HTTPTrace, registry *rules.Registry) []report.Findi
 
 	if obs, ok := byProbe["resources-read"]; ok && obs.HasRPCError && obs.RPCErrorCode == -32002 {
 		builder.add("resource-not-found-code", "resources/read returned legacy JSON-RPC error code -32002 for a missing resource.")
+	}
+
+	for _, drift := range state.DetectListDrift(httpListObservations(trace)) {
+		builder.add("session-dependent-lists-removed", fmt.Sprintf("%s result changed between read-only probes %s and %s.", drift.Method, drift.FirstProbe, drift.SecondProbe))
 	}
 
 	return builder.findings
@@ -113,6 +118,31 @@ func missingCacheableFields(result map[string]any) bool {
 		return true
 	}
 	return false
+}
+
+func httpListObservations(trace HTTPTrace) []state.ListObservation {
+	observations := make([]state.ListObservation, 0, len(trace.Observations))
+	for _, obs := range trace.Observations {
+		if !isListMethod(obs.RPCMethod) {
+			continue
+		}
+		observations = append(observations, state.ListObservation{
+			Probe:    obs.Probe,
+			Method:   obs.RPCMethod,
+			Accepted: obs.Accepted(),
+			Result:   obs.Result,
+		})
+	}
+	return observations
+}
+
+func isListMethod(method string) bool {
+	switch method {
+	case "tools/list", "resources/list", "prompts/list":
+		return true
+	default:
+		return false
+	}
 }
 
 func describeObservation(obs HTTPObservation) string {

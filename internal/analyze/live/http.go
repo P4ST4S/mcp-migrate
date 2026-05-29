@@ -52,12 +52,12 @@ func ProbeHTTP(opts Options) (HTTPTrace, error) {
 	if opts.URL == "" {
 		return HTTPTrace{}, fmt.Errorf("--url is required for http analysis")
 	}
+	timeout := opts.Timeout
+	if timeout == 0 {
+		timeout = defaultHTTPTimeout
+	}
 	client := opts.HTTPClient
 	if client == nil {
-		timeout := opts.Timeout
-		if timeout == 0 {
-			timeout = defaultHTTPTimeout
-		}
 		client = &http.Client{Timeout: timeout}
 	}
 
@@ -93,6 +93,21 @@ func ProbeHTTP(opts Options) (HTTPTrace, error) {
 		}
 		probe := resourceReadProbe(analyzer.specTarget, uri)
 		trace.Observations = append(trace.Observations, analyzer.runProbe(context.Background(), probe))
+	}
+
+	for _, probe := range stateHTTPProbes(analyzer.specTarget, "repeat") {
+		trace.Observations = append(trace.Observations, analyzer.runProbe(context.Background(), probe))
+	}
+	freshAnalyzer := httpAnalyzer{
+		client: &http.Client{
+			Timeout:   timeout,
+			Transport: &http.Transport{DisableKeepAlives: true},
+		},
+		endpoint:   opts.URL,
+		specTarget: analyzer.specTarget,
+	}
+	for _, probe := range stateHTTPProbes(analyzer.specTarget, "fresh-client") {
+		trace.Observations = append(trace.Observations, freshAnalyzer.runProbe(context.Background(), probe))
 	}
 
 	return trace, nil
@@ -277,6 +292,22 @@ func resourceReadProbe(specTarget, uri string) httpProbe {
 		nameHeaderValue:  uri,
 		protocolHeader:   specTarget,
 	}
+}
+
+func stateHTTPProbes(specTarget, suffix string) []httpProbe {
+	probes := make([]httpProbe, 0, 3)
+	for _, method := range []string{"tools/list", "resources/list", "prompts/list"} {
+		name := strings.ReplaceAll(method, "/", "-")
+		probes = append(probes, httpProbe{
+			name:             "state-" + name + "-" + suffix,
+			method:           method,
+			params:           paramsWithMeta(specTarget),
+			readOnly:         true,
+			sendMethodHeader: true,
+			protocolHeader:   specTarget,
+		})
+	}
+	return probes
 }
 
 func paramsWithMeta(specTarget string) map[string]any {

@@ -93,12 +93,14 @@ Live HTTP analyzer coverage:
 | `initialize-text-heuristic` | implemented | HTTP-only weak signal for response text mentioning initialize; warning severity only. |
 | `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, and `prompts/list` by default. `resources/read` is checked only when explicitly opted in. |
 | `resource-not-found-code` | implemented for opt-in `resources/read` | When `--allow-resource-read` is set, maps legacy `-32002` from `resources/read` to a pending-verification report-only finding. |
-| `session-dependent-lists-removed` | not started | Deferred to Phase 4 because it requires cross-connection behavioral comparison. |
+| `session-dependent-lists-removed` | implemented for read-only list drift | Repeats list probes on the existing HTTP client and a fresh client/connection, canonicalizes results, and reports drift not explained by explicit handle fields. |
+| `explicit-state-handles` | implemented for stdio process-lifetime drift | Repeats list probes in the analyzer-owned stdio process and reports process-lifetime drift as a warning-style finding. |
 | `x-mcp-header` | not started | Deferred; requires tool schema inspection and header mirroring validation. |
 
 Phase 2 safety posture:
 
 - Probes are read-only by default: `server/discover` and list methods only.
+- Hidden-state detection repeats read-only list methods and compares canonicalized results; it does not send `tools/call`.
 - `resources/read` is opt-in (`--allow-resource-read`) because real servers may attach side effects to reads.
 - `tools/call` is not sent in Phase 2.
 - `--allow-mutating-probes` exists as an explicit opt-in, but no mutating probes are implemented yet.
@@ -113,6 +115,7 @@ Live STDIO analyzer coverage:
 | `initialize-handshake-removed` | implemented | If `server/discover` fails, stdio sends a legacy `initialize` probe to the isolated child process; success maps to a finding. |
 | `client-info-capabilities-per-request` | implemented | Sends read-only `tools/list` without `_meta`; acceptance maps to a finding. |
 | `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, and `prompts/list` results for `ttlMs` and `cacheScope`. |
+| `explicit-state-handles` | implemented for process-lifetime drift | Repeats list probes in the same stdio process and reports canonical result drift as process-lifetime hidden state. |
 
 Phase 3 safety posture:
 
@@ -121,6 +124,7 @@ Phase 3 safety posture:
 - Environment variables are inherited for process execution but never emitted in JSONL or Markdown.
 - Command args are redacted in `source.ref` when they look sensitive.
 - No `tools/call` is sent.
+- Hidden-state detection repeats read-only list methods in the analyzer-owned process; it does not send `tools/call`.
 - The stdio `initialize` probe is allowed because it only affects the disposable child process; this is intentionally different from HTTP remote probing.
 - Raw probe observations are kept in internal `STDIOTrace`/`STDIOObservation` structs; rules convert observations to findings and do not perform process I/O.
 

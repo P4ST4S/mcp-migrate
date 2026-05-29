@@ -2,6 +2,7 @@ package live
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -64,6 +65,35 @@ func TestHTTPAnalyzeMixedServer(t *testing.T) {
 	assertFindingEnforcement(t, findings, "cacheable-results-required", report.EnforcementReportOnly)
 	assertFindingEnforcement(t, findings, "client-info-capabilities-per-request", report.EnforcementReportOnly)
 	assertNoFinding(t, findings, "mcp-session-id-removed")
+	assertNoToolCall(t, fixture.Methods())
+}
+
+func TestHTTPAnalyzeDetectsSessionDependentLists(t *testing.T) {
+	fixture := newHTTPFixture(t, statefulListProfile)
+	defer fixture.Close()
+
+	findings, err := Analyze(Options{Transport: "http", URL: fixture.URL, SpecTarget: spec.TargetVersion})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertFinding(t, findings, "session-dependent-lists-removed")
+	assertFindingEnforcement(t, findings, "session-dependent-lists-removed", report.EnforcementEnforced)
+	assertNoFinding(t, findings, "explicit-state-handles")
+	assertNoToolCall(t, fixture.Methods())
+}
+
+func TestHTTPAnalyzeDoesNotFlagExplicitHandleOnlyDrift(t *testing.T) {
+	fixture := newHTTPFixture(t, explicitHandleListProfile)
+	defer fixture.Close()
+
+	findings, err := Analyze(Options{Transport: "http", URL: fixture.URL, SpecTarget: spec.TargetVersion})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertNoFinding(t, findings, "session-dependent-lists-removed")
+	assertNoFinding(t, findings, "explicit-state-handles")
 	assertNoToolCall(t, fixture.Methods())
 }
 
@@ -166,18 +196,21 @@ const (
 	initializeMentionNoLegacyProfile
 	legacySilentProfile
 	resourceNotFoundProfile
+	statefulListProfile
+	explicitHandleListProfile
 )
 
 type httpFixture struct {
 	*httptest.Server
-	mu      sync.Mutex
-	methods []string
-	profile fixtureProfile
+	mu         sync.Mutex
+	methods    []string
+	listCounts map[string]int
+	profile    fixtureProfile
 }
 
 func newHTTPFixture(t *testing.T, profile fixtureProfile) *httpFixture {
 	t.Helper()
-	fixture := &httpFixture{profile: profile}
+	fixture := &httpFixture{profile: profile, listCounts: make(map[string]int)}
 	fixture.Server = httptest.NewServer(http.HandlerFunc(fixture.handle))
 	return fixture
 }
@@ -211,6 +244,10 @@ func (f *httpFixture) handle(w http.ResponseWriter, r *http.Request) {
 		f.handleLegacySilent(w, r, req)
 	case resourceNotFoundProfile:
 		f.handleResourceNotFound(w, r, req)
+	case statefulListProfile:
+		f.handleStatefulList(w, r, req, false)
+	case explicitHandleListProfile:
+		f.handleStatefulList(w, r, req, true)
 	default:
 		writeRPCError(w, http.StatusInternalServerError, req.ID, -32603, "unknown fixture")
 	}
@@ -271,6 +308,60 @@ func (f *httpFixture) handleResourceNotFound(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	f.handleCompliant(w, r, req)
+}
+
+func (f *httpFixture) handleStatefulList(w http.ResponseWriter, r *http.Request, req rpcRequest, explicitHandleOnly bool) {
+	if err := validate2026Headers(r, req); err != "" {
+		writeRPCError(w, http.StatusBadRequest, req.ID, -32602, err)
+		return
+	}
+	if !hasRequiredMeta(req.Params) {
+		writeRPCError(w, http.StatusBadRequest, req.ID, -32602, "missing required meta")
+		return
+	}
+	if r.Header.Get("MCP-Protocol-Version") != metaVersionFromParams(req.Params) {
+		writeRPCError(w, http.StatusBadRequest, req.ID, -32602, "protocol version mismatch")
+		return
+	}
+	if req.Method == "server/discover" {
+		writeReadOnlyResult(w, req, true)
+		return
+	}
+	if !isListMethod(req.Method) {
+		writeReadOnlyResult(w, req, true)
+		return
+	}
+
+	count := f.incrementListCount(r.RemoteAddr, req.Method)
+	result := statefulListResult(req.Method, count, explicitHandleOnly)
+	addCacheFields(result, true)
+	writeRPCResult(w, req.ID, result)
+}
+
+func (f *httpFixture) incrementListCount(scope, method string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := scope + "|" + method
+	f.listCounts[key]++
+	return f.listCounts[key]
+}
+
+func statefulListResult(method string, count int, explicitHandleOnly bool) map[string]any {
+	if explicitHandleOnly {
+		return map[string]any{
+			"tools": []any{map[string]any{"name": "checkout", "stateHandle": fmt.Sprintf("state-%d", count)}},
+		}
+	}
+	switch method {
+	case "tools/list":
+		return map[string]any{"tools": []any{map[string]any{"name": fmt.Sprintf("tool-%d", count)}}}
+	case "resources/list":
+		return map[string]any{"resources": []any{map[string]any{"uri": fmt.Sprintf("file:///fixture-%d.txt", count), "name": "fixture"}}}
+	case "prompts/list":
+		return map[string]any{"prompts": []any{map[string]any{"name": fmt.Sprintf("prompt-%d", count)}}}
+	default:
+		return map[string]any{}
+	}
 }
 
 func validate2026Headers(r *http.Request, req rpcRequest) string {
