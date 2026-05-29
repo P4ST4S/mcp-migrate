@@ -19,7 +19,7 @@ func handleResourcesRead2(uri string) (any, *rpcError) {
 	if _, exists := resourceStore[uri]; !exists {
 		return nil, &rpcError{
 			Code:    -32002,
-			Message: "not found",
+			Message: "resource not found",
 		}
 	}
 	return resourceStore[uri], nil

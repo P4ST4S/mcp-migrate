@@ -115,9 +115,12 @@ func runPatch(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("patch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var path string
-	var write bool
+	var write, allowPending bool
 	fs.StringVar(&path, "path", "", "file or directory to patch (required)")
 	fs.BoolVar(&write, "write", false, "write changes to disk (default: dry-run)")
+	fs.BoolVar(&allowPending, "allow-pending", false,
+		"allow patches governed by rules whose SEP has not yet reached Final status; "+
+			"carries the risk of a second migration if the spec changes before finalisation")
 
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -127,10 +130,14 @@ func runPatch(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	result, err := patch.Apply(patch.Options{Path: path, Write: write})
+	result, err := patch.Apply(patch.Options{Path: path, Write: write, AllowPending: allowPending})
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 1
+	}
+
+	if result.PendingWarning != "" {
+		fmt.Fprintln(stderr, result.PendingWarning)
 	}
 
 	if len(result.Files) == 0 {

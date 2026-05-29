@@ -10,7 +10,7 @@ def read_resource(uri: str):
         return {
             "error": {
                 "code": -32602,
-                "message": "not found",
+                "message": "resource not found",
             }
         }
     return {"result": store[uri]}

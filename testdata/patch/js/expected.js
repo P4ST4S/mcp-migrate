@@ -12,7 +12,7 @@ async function readResource(uri) {
     return {
       error: {
         code: -32602,
-        message: "not found",
+        message: "resource not found",
       },
     };
   }

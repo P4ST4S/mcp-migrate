@@ -8,10 +8,15 @@ import (
 	"testing"
 )
 
+// withPending returns Options with AllowPending set, for tests that exercise
+// patch behaviour rather than the pending-verification gate.
+func opts(path string, write bool) Options {
+	return Options{Path: path, Write: write, AllowPending: true}
+}
+
 // fixtureDir returns the absolute path to a testdata/patch sub-directory.
 func fixtureDir(t *testing.T, sub string) string {
 	t.Helper()
-	// The package lives at internal/patch/; testdata is at the repo root.
 	return filepath.Join("..", "..", "testdata", "patch", sub)
 }
 
@@ -48,6 +53,61 @@ func copyDir(t *testing.T, src string) string {
 	return tmp
 }
 
+// --- pending-verification gate ---
+
+func TestPendingGateBlocksByDefault(t *testing.T) {
+	tmp := t.TempDir()
+	src := `package h
+
+func handleResourcesRead(uri string) error {
+	return &rpcError{Code: -32002, Message: "resource not found"}
+}
+`
+	path := filepath.Join(tmp, "handler.go")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Apply(Options{Path: path, Write: false}) // no AllowPending
+	if err == nil {
+		t.Fatal("expected error when AllowPending is false for a pending-verification rule")
+	}
+	if !strings.Contains(err.Error(), "pending-verification") {
+		t.Errorf("error should mention pending-verification, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "--allow-pending") {
+		t.Errorf("error should mention --allow-pending, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "Draft") {
+		t.Errorf("error should mention the SEP status Draft, got: %v", err)
+	}
+}
+
+func TestPendingGatePassesWithAllowPending(t *testing.T) {
+	tmp := t.TempDir()
+	src := `package h
+
+func handleResourcesRead(uri string) error {
+	return &rpcError{Code: -32002, Message: "resource not found"}
+}
+`
+	path := filepath.Join(tmp, "handler.go")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Apply(Options{Path: path, Write: false, AllowPending: true})
+	if err != nil {
+		t.Fatalf("expected no error with AllowPending=true, got: %v", err)
+	}
+	if result.PendingWarning == "" {
+		t.Error("expected PendingWarning to be set when AllowPending is used")
+	}
+	if !strings.Contains(result.PendingWarning, "pending-verification") {
+		t.Errorf("PendingWarning should describe the situation, got: %q", result.PendingWarning)
+	}
+}
+
 // --- dry-run tests ---
 
 func TestDryRunGoDoesNotModifyDisk(t *testing.T) {
@@ -56,7 +116,7 @@ func TestDryRunGoDoesNotModifyDisk(t *testing.T) {
 	inputPath := filepath.Join(tmp, "input.go")
 	before, _ := os.ReadFile(inputPath)
 
-	result, err := Apply(Options{Path: inputPath, Write: false})
+	result, err := Apply(opts(inputPath, false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -80,7 +140,7 @@ func TestWriteGoProducesExpectedOutput(t *testing.T) {
 	tmp := copyDir(t, src)
 	inputPath := filepath.Join(tmp, "input.go")
 
-	_, err := Apply(Options{Path: inputPath, Write: true})
+	_, err := Apply(opts(inputPath, true))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -97,7 +157,7 @@ func TestWriteJSProducesExpectedOutput(t *testing.T) {
 	tmp := copyDir(t, src)
 	inputPath := filepath.Join(tmp, "input.js")
 
-	_, err := Apply(Options{Path: inputPath, Write: true})
+	_, err := Apply(opts(inputPath, true))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -114,7 +174,7 @@ func TestWritePythonProducesExpectedOutput(t *testing.T) {
 	tmp := copyDir(t, src)
 	inputPath := filepath.Join(tmp, "input.py")
 
-	_, err := Apply(Options{Path: inputPath, Write: true})
+	_, err := Apply(opts(inputPath, true))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -133,14 +193,12 @@ func TestIdempotentGoAlreadyPatched(t *testing.T) {
 	tmp := copyDir(t, src)
 	inputPath := filepath.Join(tmp, "input.go")
 
-	// First pass: write the patch.
-	_, err := Apply(Options{Path: inputPath, Write: true})
+	_, err := Apply(opts(inputPath, true))
 	if err != nil {
 		t.Fatalf("first Apply: %v", err)
 	}
 
-	// Second pass on the already-patched file: must produce no change.
-	result, err := Apply(Options{Path: inputPath, Write: true})
+	result, err := Apply(opts(inputPath, true))
 	if err != nil {
 		t.Fatalf("second Apply: %v", err)
 	}
@@ -152,7 +210,6 @@ func TestIdempotentGoAlreadyPatched(t *testing.T) {
 func TestIdempotentExpectedFileNoChange(t *testing.T) {
 	src := fixtureDir(t, "go/resource_handler")
 	tmp := t.TempDir()
-	// Copy only the expected file, rename to input.go so the patcher can find it.
 	data, err := os.ReadFile(filepath.Join(src, "expected.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +219,7 @@ func TestIdempotentExpectedFileNoChange(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Apply(Options{Path: targetPath, Write: false})
+	result, err := Apply(opts(targetPath, false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -179,7 +236,7 @@ func TestAmbiguousContextNotPatched(t *testing.T) {
 	inputPath := filepath.Join(tmp, "input.go")
 	before, _ := os.ReadFile(inputPath)
 
-	result, err := Apply(Options{Path: inputPath, Write: false})
+	result, err := Apply(opts(inputPath, false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -188,7 +245,6 @@ func TestAmbiguousContextNotPatched(t *testing.T) {
 	if string(before) != string(after) {
 		t.Fatal("ambiguous file must not be modified")
 	}
-	// The patcher should report the skipped occurrences.
 	if len(result.Files) == 0 {
 		t.Fatal("expected a FileResult with skipped count for the ambiguous file")
 	}
@@ -200,10 +256,40 @@ func TestAmbiguousContextNotPatched(t *testing.T) {
 	}
 }
 
+// TestDistantCommentFalsePositive is the regression test for the specific case
+// described in the safety correction: a -32002 with message "method not found"
+// must NOT be patched even when a comment 10 lines above mentions "resources/read".
+func TestDistantCommentFalsePositive(t *testing.T) {
+	inputPath := fixtureDir(t, "ambiguous/distant_comment.go")
+	before, err := os.ReadFile(inputPath)
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+
+	// Run on a copy so we never mutate the fixture.
+	tmp := t.TempDir()
+	copyPath := filepath.Join(tmp, "distant_comment.go")
+	if err := os.WriteFile(copyPath, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Apply(opts(copyPath, false))
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+
+	after, _ := os.ReadFile(copyPath)
+	if string(before) != string(after) {
+		t.Fatal("distant_comment.go must not be modified: -32002 is not in a resource-not-found context")
+	}
+	if len(result.Files) != 0 && result.Files[0].Changed {
+		t.Fatal("distant_comment.go must not be marked changed")
+	}
+}
+
 // --- directory walk ---
 
 func TestWalkDirectoryPatchesMultipleFiles(t *testing.T) {
-	// Build a temp dir with one Go and one JS file, both in resource context.
 	tmp := t.TempDir()
 	goSrc := `package h
 
@@ -222,7 +308,7 @@ func handleResourcesRead(uri string) error {
 		t.Fatal(err)
 	}
 
-	result, err := Apply(Options{Path: tmp, Write: false})
+	result, err := Apply(opts(tmp, false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -245,7 +331,7 @@ func TestUnsupportedExtensionIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Apply(Options{Path: path, Write: false})
+	result, err := Apply(opts(path, false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -257,14 +343,14 @@ func TestUnsupportedExtensionIgnored(t *testing.T) {
 // --- error conditions ---
 
 func TestApplyRequiresPath(t *testing.T) {
-	_, err := Apply(Options{})
+	_, err := Apply(Options{AllowPending: true})
 	if err == nil {
 		t.Fatal("expected error when path is empty")
 	}
 }
 
 func TestApplyNonExistentPath(t *testing.T) {
-	_, err := Apply(Options{Path: "/no/such/file.go"})
+	_, err := Apply(Options{Path: "/no/such/file.go", AllowPending: true})
 	if err == nil {
 		t.Fatal("expected error for non-existent path")
 	}
@@ -276,7 +362,7 @@ func TestDiffContainsOldAndNewCode(t *testing.T) {
 	src := fixtureDir(t, "go/resource_handler")
 	tmp := copyDir(t, src)
 
-	result, err := Apply(Options{Path: filepath.Join(tmp, "input.go"), Write: false})
+	result, err := Apply(opts(filepath.Join(tmp, "input.go"), false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
@@ -298,13 +384,12 @@ func TestDiffIsValidUnifiedDiff(t *testing.T) {
 	src := fixtureDir(t, "go/resource_handler")
 	tmp := copyDir(t, src)
 
-	result, err := Apply(Options{Path: filepath.Join(tmp, "input.go"), Write: false})
+	result, err := Apply(opts(filepath.Join(tmp, "input.go"), false))
 	if err != nil {
 		t.Fatalf("Apply returned error: %v", err)
 	}
 	diff := result.Files[0].Diff
 
-	// Must start with --- / +++ headers.
 	lines := strings.Split(diff, "\n")
 	if len(lines) < 2 {
 		t.Fatalf("diff too short: %q", diff)
@@ -316,7 +401,6 @@ func TestDiffIsValidUnifiedDiff(t *testing.T) {
 		t.Errorf("diff line 1 must start with '+++ ', got %q", lines[1])
 	}
 
-	// Every hunk header must parse as @@ -old,count +new,count @@
 	for _, l := range lines {
 		if !strings.HasPrefix(l, "@@") {
 			continue
@@ -331,11 +415,9 @@ func TestDiffIsValidUnifiedDiff(t *testing.T) {
 		}
 	}
 
-	// Context and changed lines must not end with a trailing newline inside
-	// the string (each fmt.Fprintf already adds \n; doubling would break patch(1)).
 	for i, l := range lines {
 		if l == "" {
-			continue // blank separator between hunks is fine
+			continue
 		}
 		if len(l) > 1 && l[len(l)-1] == '\n' {
 			t.Errorf("diff line %d has embedded trailing newline: %q", i, l)
@@ -346,7 +428,6 @@ func TestDiffIsValidUnifiedDiff(t *testing.T) {
 // Bug 1: -32002 at end of file without trailing newline must still be matched.
 func TestPatchesCodeAtEndOfFileWithoutNewline(t *testing.T) {
 	tmp := t.TempDir()
-	// No trailing newline — previously the pattern required a non-digit char after -32002.
 	src := `package h
 
 func handleResourcesRead(uri string) error {
@@ -357,7 +438,7 @@ func handleResourcesRead(uri string) error {
 		t.Fatal(err)
 	}
 
-	result, err := Apply(Options{Path: path, Write: true})
+	result, err := Apply(opts(path, true))
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -376,8 +457,6 @@ func handleResourcesRead(uri string) error {
 // Bug 2: multi-hunk diff — changes far apart must produce correct @@ line counts.
 func TestMultiHunkDiffHasCorrectLineCounts(t *testing.T) {
 	tmp := t.TempDir()
-	// Two resources/read handlers separated by many lines so they end up in
-	// distinct hunks.
 	lines := make([]string, 0, 60)
 	lines = append(lines, "package h", "")
 	lines = append(lines, `func handleResourcesRead(uri string) error {`)
@@ -399,7 +478,7 @@ func TestMultiHunkDiffHasCorrectLineCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Apply(Options{Path: path, Write: false})
+	result, err := Apply(opts(path, false))
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -410,7 +489,6 @@ func TestMultiHunkDiffHasCorrectLineCounts(t *testing.T) {
 	diff := result.Files[0].Diff
 	diffLines := strings.Split(diff, "\n")
 
-	// Count hunk headers and validate each.
 	hunkCount := 0
 	for _, l := range diffLines {
 		if !strings.HasPrefix(l, "@@") {
@@ -434,8 +512,6 @@ func TestMultiHunkDiffHasCorrectLineCounts(t *testing.T) {
 // Bug 4: WalkDir must not descend into .git, node_modules, or vendor.
 func TestWalkSkipsIgnoredDirectories(t *testing.T) {
 	tmp := t.TempDir()
-
-	// Patchable file at the root.
 	rootSrc := `package h
 
 func handleResourcesRead(uri string) error {
@@ -446,7 +522,6 @@ func handleResourcesRead(uri string) error {
 		t.Fatal(err)
 	}
 
-	// Files inside ignored dirs that must never be touched.
 	for _, dir := range []string{".git", "node_modules", "vendor"} {
 		if err := os.MkdirAll(filepath.Join(tmp, dir), 0o755); err != nil {
 			t.Fatal(err)
@@ -460,11 +535,10 @@ func handleResourcesRead(uri string) error {
 		}
 	}
 
-	result, err := Apply(Options{Path: tmp, Write: false})
+	result, err := Apply(opts(tmp, false))
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
-	// Only the root handler.go must appear; the three ignored files must not.
 	if len(result.Files) != 1 {
 		t.Fatalf("expected 1 file result (root only), got %d: %v",
 			len(result.Files), func() []string {
@@ -477,22 +551,18 @@ func handleResourcesRead(uri string) error {
 	}
 }
 
-// Bug 3: write must be atomic — the file must exist and be complete even if
-// the process is interrupted between writes. We test atomicity indirectly by
-// verifying that the written file is identical to what dry-run predicted.
+// Bug 3: write must be atomic.
 func TestWriteIsAtomicAndProducesCorrectContent(t *testing.T) {
 	src := fixtureDir(t, "go/resource_handler")
 	tmp := copyDir(t, src)
 	inputPath := filepath.Join(tmp, "input.go")
 
-	// Capture dry-run prediction.
-	dryResult, err := Apply(Options{Path: inputPath, Write: false})
+	dryResult, err := Apply(opts(inputPath, false))
 	if err != nil {
 		t.Fatalf("dry-run Apply: %v", err)
 	}
 
-	// Apply for real.
-	_, err = Apply(Options{Path: inputPath, Write: true})
+	_, err = Apply(opts(inputPath, true))
 	if err != nil {
 		t.Fatalf("write Apply: %v", err)
 	}
@@ -502,11 +572,10 @@ func TestWriteIsAtomicAndProducesCorrectContent(t *testing.T) {
 	if string(got) != expected {
 		t.Fatalf("written content does not match expected")
 	}
-	// Cross-check: diff must be non-empty before write, empty after.
 	if dryResult.Files[0].Diff == "" {
 		t.Error("dry-run diff must be non-empty before write")
 	}
-	postResult, _ := Apply(Options{Path: inputPath, Write: false})
+	postResult, _ := Apply(opts(inputPath, false))
 	if len(postResult.Files) != 0 {
 		t.Error("no diff expected after write (idempotence)")
 	}

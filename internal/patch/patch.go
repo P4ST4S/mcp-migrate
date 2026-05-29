@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/P4ST4S/mcp-migrate/internal/rules"
 )
 
 // Options controls a patch run.
@@ -17,6 +19,15 @@ type Options struct {
 	// Write commits changes to disk. When false (default) the run is dry-run:
 	// diffs are produced but no file is modified.
 	Write bool
+	// AllowPending permits rewriting code governed by rules whose underlying
+	// SEP has not yet reached Final status. Without this flag, patch refuses
+	// to modify files for pending-verification rules and returns an error
+	// explaining which rules are affected and why.
+	AllowPending bool
+	// Registry is the rule registry used to look up patch-relevant rule
+	// metadata (autofixability, SEP status). When nil, DefaultRegistry() is
+	// used.
+	Registry *rules.Registry
 }
 
 // FileResult records the outcome for one file.
@@ -35,6 +46,9 @@ type FileResult struct {
 // Result is the aggregate output of a patch run.
 type Result struct {
 	Files []FileResult
+	// PendingWarning is non-empty when AllowPending was required and used.
+	// It describes which rules are still pending-verification.
+	PendingWarning string
 }
 
 // ignoredDirs are directory names that are never descended into during a walk.
@@ -46,12 +60,50 @@ var ignoredDirs = map[string]bool{
 	".svn":         true,
 }
 
+const resourceNotFoundRuleID = "resource-not-found-code"
+
 // Apply scans Path for patchable occurrences of -32002 and, when Write is
 // true, rewrites the affected files atomically. It always returns a diff
 // regardless of Write.
+//
+// If the rule governing the substitution is pending-verification and
+// opts.AllowPending is false, Apply returns an error rather than silently
+// modifying code based on a non-final spec.
 func Apply(opts Options) (Result, error) {
 	if opts.Path == "" {
 		return Result{}, fmt.Errorf("patch: path is required")
+	}
+
+	reg := opts.Registry
+	if reg == nil {
+		var err error
+		reg, err = rules.DefaultRegistry()
+		if err != nil {
+			return Result{}, fmt.Errorf("patch: load registry: %w", err)
+		}
+	}
+
+	rule, ok := reg.Find(resourceNotFoundRuleID)
+	if !ok {
+		return Result{}, fmt.Errorf("patch: rule %q not found in registry", resourceNotFoundRuleID)
+	}
+
+	// Gate: refuse to patch when the rule is pending-verification and the
+	// caller has not explicitly opted in with AllowPending.
+	if rule.Status == rules.StatusPendingVerification && !opts.AllowPending {
+		sep := rule.SEPRef()
+		sepDesc := ""
+		if sep != nil {
+			sepDesc = fmt.Sprintf(" (SEP %s, status: %s)", sep.ID, sep.Status)
+		}
+		return Result{}, fmt.Errorf(
+			"patch: rule %q is pending-verification%s — "+
+				"the underlying spec has not yet reached Final status.\n"+
+				"Re-run with --allow-pending to apply this patch anyway.\n"+
+				"Warning: modifying code based on a Draft spec carries the risk "+
+				"of a second migration if the spec changes before finalisation.",
+			resourceNotFoundRuleID, sepDesc,
+		)
 	}
 
 	info, err := os.Stat(opts.Path)
@@ -86,6 +138,19 @@ func Apply(opts Options) (Result, error) {
 	}
 
 	var result Result
+	if rule.Status == rules.StatusPendingVerification && opts.AllowPending {
+		sep := rule.SEPRef()
+		sepDesc := ""
+		if sep != nil {
+			sepDesc = fmt.Sprintf("SEP %s is %s", sep.ID, sep.Status)
+		}
+		result.PendingWarning = fmt.Sprintf(
+			"Warning: applying patch for rule %q which is pending-verification (%s). "+
+				"The underlying spec may change before finalisation.",
+			resourceNotFoundRuleID, sepDesc,
+		)
+	}
+
 	for _, p := range paths {
 		fr, err := patchFile(p, opts.Write)
 		if err != nil {
@@ -108,29 +173,29 @@ func isSupportedSource(path string) bool {
 }
 
 // errorCodePattern matches the literal integer -32002 as a standalone token.
-// It uses a word-boundary-style assertion: the four digits must not be
-// immediately preceded or followed by another digit.
-// Using (?:^|[^0-9]) as a look-behind substitute and ([^0-9]|$) as look-ahead
-// lets us match -32002 at end-of-line and end-of-file without requiring a
-// trailing non-digit character to be consumed.
+// Groups 1 and 2 capture the surrounding non-digit characters so they can be
+// preserved in the substitution, including at end-of-line and end-of-file.
 var errorCodePattern = regexp.MustCompile(`(^|[^0-9])-32002($|[^0-9])`)
 
-// resourceContextPattern matches identifiers that, when present near -32002,
-// confirm the code is used in a resource-not-found context. The pattern
-// requires one of:
-//   - the exact MCP method name "resources/read" (with slash)
-//   - "resource not found" / "resource_not_found" as a compound phrase
-//   - "ResourceNotFound" as a single camel-case identifier
-//
-// Plain words like "resource" or "legacyResourceCode" do not match, to prevent
-// false positives in generic error-handling code.
-var resourceContextPattern = regexp.MustCompile(
-	`(?i)resources/read|resource[_ -]not[_ -]found|ResourceNotFound`,
+// resourceSignalPattern matches a strong, local resource-not-found signal.
+// It must appear on the same line as -32002 or within 2 adjacent lines (the
+// expression block), in non-comment code. The pattern intentionally requires
+// a compound phrase or exact method name, not the bare word "resource":
+//   - "resource not found" / "resource_not_found" as an error message literal
+//   - "ResourceNotFound" as a camel-case error symbol
+//   - The exact MCP method name "resources/read" on the same expression line
+var resourceSignalPattern = regexp.MustCompile(
+	`(?i)resource[_ -]not[_ -]found|ResourceNotFound|resources/read`,
 )
 
-// contextWindowLines is the number of lines above and below a -32002
-// occurrence that are searched for a resource context signal.
-const contextWindowLines = 12
+// commentPrefixPattern matches lines that are pure comments in any supported
+// language. Such lines are excluded from the local signal search.
+var commentPrefixPattern = regexp.MustCompile(`^\s*(//|#|\*|/\*)`)
+
+// localContextLines is the half-width of the expression window: only lines
+// within this distance from the -32002 occurrence, and only non-comment lines,
+// are considered for the resource signal.
+const localContextLines = 2
 
 func patchFile(path string, write bool) (FileResult, error) {
 	src, err := os.ReadFile(path)
@@ -152,22 +217,34 @@ func patchFile(path string, write bool) (FileResult, error) {
 	}
 
 	// Determine which occurrences are safe to replace.
+	// Safe = a resource-not-found signal appears on the same line or within
+	// localContextLines lines, in a non-comment line.
 	type decision struct {
 		lineIdx int
 		safe    bool
 	}
 	decisions := make([]decision, len(matchLines))
 	for k, idx := range matchLines {
-		lo := idx - contextWindowLines
+		lo := idx - localContextLines
 		if lo < 0 {
 			lo = 0
 		}
-		hi := idx + contextWindowLines
+		hi := idx + localContextLines
 		if hi >= len(lines) {
 			hi = len(lines) - 1
 		}
-		window := bytes.Join(lines[lo:hi+1], []byte("\n"))
-		decisions[k] = decision{lineIdx: idx, safe: resourceContextPattern.Match(window)}
+		safe := false
+		for i := lo; i <= hi; i++ {
+			line := lines[i]
+			if commentPrefixPattern.Match(line) {
+				continue // ignore comment lines
+			}
+			if resourceSignalPattern.Match(line) {
+				safe = true
+				break
+			}
+		}
+		decisions[k] = decision{lineIdx: idx, safe: safe}
 	}
 
 	safeCount := 0
@@ -184,8 +261,6 @@ func patchFile(path string, write bool) (FileResult, error) {
 	}
 
 	// Build the patched content line by line, replacing only safe occurrences.
-	// The pattern captures the non-digit characters surrounding -32002 so they
-	// are preserved in the substitution.
 	newLines := make([][]byte, len(lines))
 	copy(newLines, lines)
 	for _, d := range decisions {
@@ -223,7 +298,6 @@ func writeAtomic(path string, data []byte) error {
 	}
 	tmpName := tmp.Name()
 
-	// Preserve permissions of the original file.
 	fi, err := os.Stat(path)
 	if err != nil {
 		tmp.Close()
@@ -253,8 +327,6 @@ func writeAtomic(path string, data []byte) error {
 }
 
 // unifiedDiff produces a well-formed unified diff between old and new content.
-// Each hunk header accurately reflects the line counts of the context lines
-// actually emitted, making the diff applicable with patch(1).
 func unifiedDiff(path string, old, new []byte) string {
 	if bytes.Equal(old, new) {
 		return ""
@@ -264,15 +336,13 @@ func unifiedDiff(path string, old, new []byte) string {
 
 	const ctx = 3
 
-	// Identify which line indices differ (using the longer slice as the bound).
 	maxLen := len(oldLines)
 	if len(newLines) > maxLen {
 		maxLen = len(newLines)
 	}
 	var changedIdx []int
 	for i := 0; i < maxLen; i++ {
-		ol, nl := lineAt(oldLines, i), lineAt(newLines, i)
-		if ol != nl {
+		if lineAt(oldLines, i) != lineAt(newLines, i) {
 			changedIdx = append(changedIdx, i)
 		}
 	}
@@ -280,7 +350,6 @@ func unifiedDiff(path string, old, new []byte) string {
 		return ""
 	}
 
-	// Group adjacent changes (within 2*ctx of each other) into hunks.
 	type hunkRange struct{ lo, hi int }
 	var hunks []hunkRange
 	lo, hi := changedIdx[0], changedIdx[0]
@@ -299,7 +368,6 @@ func unifiedDiff(path string, old, new []byte) string {
 	fmt.Fprintf(&b, "+++ b/%s\n", path)
 
 	for _, hr := range hunks {
-		// Compute the window of lines to emit for this hunk.
 		oldWinStart := hr.lo - ctx
 		if oldWinStart < 0 {
 			oldWinStart = 0
@@ -317,7 +385,6 @@ func unifiedDiff(path string, old, new []byte) string {
 			newWinEnd = len(newLines) - 1
 		}
 
-		// The hunk iterates over the union of both windows.
 		winStart := oldWinStart
 		if newWinStart < winStart {
 			winStart = newWinStart
@@ -327,10 +394,8 @@ func unifiedDiff(path string, old, new []byte) string {
 			winEnd = newWinEnd
 		}
 
-		// Collect lines to emit so we can compute accurate counts before
-		// writing the @@ header.
 		type emitLine struct {
-			kind byte // ' ', '-', '+'
+			kind byte
 			text string
 		}
 		var emit []emitLine
@@ -349,7 +414,6 @@ func unifiedDiff(path string, old, new []byte) string {
 			}
 		}
 
-		// Count old and new lines from the collected emit lines.
 		oldCount, newCount := 0, 0
 		for _, e := range emit {
 			switch e.kind {

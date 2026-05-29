@@ -67,6 +67,35 @@ func TestPatchRequiresPath(t *testing.T) {
 	}
 }
 
+func TestPatchBlocksWithoutAllowPending(t *testing.T) {
+	tmp := t.TempDir()
+	src := `package h
+
+func handleResourcesRead(uri string) error {
+	return &rpcError{Code: -32002, Message: "resource not found"}
+}
+`
+	path := filepath.Join(tmp, "handler.go")
+	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	// No --allow-pending flag: must fail with a descriptive error.
+	code := Run([]string{"patch", "--path", path}, nil, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected exit 1 without --allow-pending, got %d", code)
+	}
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "pending-verification") {
+		t.Errorf("error output should mention pending-verification, got: %q", errOut)
+	}
+	if !strings.Contains(errOut, "--allow-pending") {
+		t.Errorf("error output should mention --allow-pending, got: %q", errOut)
+	}
+}
+
 func TestPatchDryRunNothingToChange(t *testing.T) {
 	tmp := t.TempDir()
 	path := filepath.Join(tmp, "clean.go")
@@ -76,7 +105,7 @@ func TestPatchDryRunNothingToChange(t *testing.T) {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run([]string{"patch", "--path", path}, nil, &stdout, &stderr)
+	code := Run([]string{"patch", "--path", path, "--allow-pending"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d stderr=%q", code, stderr.String())
 	}
@@ -100,7 +129,7 @@ func handleResourcesRead(uri string) error {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run([]string{"patch", "--path", path}, nil, &stdout, &stderr)
+	code := Run([]string{"patch", "--path", path, "--allow-pending"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d stderr=%q", code, stderr.String())
 	}
@@ -113,6 +142,10 @@ func handleResourcesRead(uri string) error {
 	}
 	if !strings.Contains(out, "-32602") {
 		t.Errorf("expected -32602 in diff output, got %q", out)
+	}
+	// Pending warning must appear on stderr.
+	if !strings.Contains(stderr.String(), "pending-verification") {
+		t.Errorf("expected pending warning on stderr, got %q", stderr.String())
 	}
 	// dry-run: file must be unchanged
 	got, _ := os.ReadFile(path)
@@ -136,7 +169,7 @@ func handleResourcesRead(uri string) error {
 
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
-	code := Run([]string{"patch", "--path", path, "--write"}, nil, &stdout, &stderr)
+	code := Run([]string{"patch", "--path", path, "--write", "--allow-pending"}, nil, &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d stderr=%q", code, stderr.String())
 	}
