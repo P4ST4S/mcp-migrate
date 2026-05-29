@@ -37,9 +37,18 @@ type Result struct {
 	Files []FileResult
 }
 
+// ignoredDirs are directory names that are never descended into during a walk.
+var ignoredDirs = map[string]bool{
+	".git":         true,
+	"node_modules": true,
+	"vendor":       true,
+	".hg":          true,
+	".svn":         true,
+}
+
 // Apply scans Path for patchable occurrences of -32002 and, when Write is
-// true, rewrites the affected files. It always returns a diff regardless of
-// Write.
+// true, rewrites the affected files atomically. It always returns a diff
+// regardless of Write.
 func Apply(opts Options) (Result, error) {
 	if opts.Path == "" {
 		return Result{}, fmt.Errorf("patch: path is required")
@@ -57,6 +66,9 @@ func Apply(opts Options) (Result, error) {
 				return err
 			}
 			if d.IsDir() {
+				if ignoredDirs[d.Name()] {
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			if isSupportedSource(p) {
@@ -67,6 +79,9 @@ func Apply(opts Options) (Result, error) {
 			return Result{}, fmt.Errorf("patch: walk %s: %w", opts.Path, err)
 		}
 	} else {
+		if !isSupportedSource(opts.Path) {
+			return Result{}, nil
+		}
 		paths = []string{opts.Path}
 	}
 
@@ -92,9 +107,13 @@ func isSupportedSource(path string) bool {
 	return false
 }
 
-// errorCodePattern matches the literal integer -32002 as a standalone token
-// (not followed by another digit).
-var errorCodePattern = regexp.MustCompile(`-32002([^0-9])`)
+// errorCodePattern matches the literal integer -32002 as a standalone token.
+// It uses a word-boundary-style assertion: the four digits must not be
+// immediately preceded or followed by another digit.
+// Using (?:^|[^0-9]) as a look-behind substitute and ([^0-9]|$) as look-ahead
+// lets us match -32002 at end-of-line and end-of-file without requiring a
+// trailing non-digit character to be consumed.
+var errorCodePattern = regexp.MustCompile(`(^|[^0-9])-32002($|[^0-9])`)
 
 // resourceContextPattern matches identifiers that, when present near -32002,
 // confirm the code is used in a resource-not-found context. The pattern
@@ -164,27 +183,24 @@ func patchFile(path string, write bool) (FileResult, error) {
 		return FileResult{Path: path, Skipped: skippedCount}, nil
 	}
 
-	// Build the patched content line by line.
+	// Build the patched content line by line, replacing only safe occurrences.
+	// The pattern captures the non-digit characters surrounding -32002 so they
+	// are preserved in the substitution.
 	newLines := make([][]byte, len(lines))
 	copy(newLines, lines)
 	for _, d := range decisions {
 		if !d.safe {
 			continue
 		}
-		// Replace -32002 preserving the trailing non-digit capture group.
-		newLines[d.lineIdx] = errorCodePattern.ReplaceAll(newLines[d.lineIdx], []byte("-32602$1"))
+		newLines[d.lineIdx] = errorCodePattern.ReplaceAll(newLines[d.lineIdx], []byte("${1}-32602${2}"))
 	}
 	patched := bytes.Join(newLines, []byte("\n"))
 
 	diff := unifiedDiff(path, src, patched)
 
 	if write {
-		fi, err := os.Stat(path)
-		if err != nil {
-			return FileResult{}, fmt.Errorf("patch: stat %s: %w", path, err)
-		}
-		if err := os.WriteFile(path, patched, fi.Mode()); err != nil {
-			return FileResult{}, fmt.Errorf("patch: write %s: %w", path, err)
+		if err := writeAtomic(path, patched); err != nil {
+			return FileResult{}, err
 		}
 	}
 
@@ -196,7 +212,49 @@ func patchFile(path string, write bool) (FileResult, error) {
 	}, nil
 }
 
-// unifiedDiff produces a simplified unified diff between old and new content.
+// writeAtomic writes data to a temporary file in the same directory as path,
+// then renames it over path. This ensures the target file is never in a
+// partially-written state if the process is interrupted.
+func writeAtomic(path string, data []byte) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, ".mcp-migrate-patch-*")
+	if err != nil {
+		return fmt.Errorf("patch: create temp %s: %w", dir, err)
+	}
+	tmpName := tmp.Name()
+
+	// Preserve permissions of the original file.
+	fi, err := os.Stat(path)
+	if err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("patch: stat %s: %w", path, err)
+	}
+
+	if err := tmp.Chmod(fi.Mode()); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("patch: chmod temp %s: %w", tmpName, err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return fmt.Errorf("patch: write temp %s: %w", tmpName, err)
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("patch: close temp %s: %w", tmpName, err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return fmt.Errorf("patch: rename %s -> %s: %w", tmpName, path, err)
+	}
+	return nil
+}
+
+// unifiedDiff produces a well-formed unified diff between old and new content.
+// Each hunk header accurately reflects the line counts of the context lines
+// actually emitted, making the diff applicable with patch(1).
 func unifiedDiff(path string, old, new []byte) string {
 	if bytes.Equal(old, new) {
 		return ""
@@ -205,20 +263,15 @@ func unifiedDiff(path string, old, new []byte) string {
 	newLines := strings.Split(string(new), "\n")
 
 	const ctx = 3
+
+	// Identify which line indices differ (using the longer slice as the bound).
 	maxLen := len(oldLines)
 	if len(newLines) > maxLen {
 		maxLen = len(newLines)
 	}
-
 	var changedIdx []int
 	for i := 0; i < maxLen; i++ {
-		ol, nl := "", ""
-		if i < len(oldLines) {
-			ol = oldLines[i]
-		}
-		if i < len(newLines) {
-			nl = newLines[i]
-		}
+		ol, nl := lineAt(oldLines, i), lineAt(newLines, i)
 		if ol != nl {
 			changedIdx = append(changedIdx, i)
 		}
@@ -227,6 +280,7 @@ func unifiedDiff(path string, old, new []byte) string {
 		return ""
 	}
 
+	// Group adjacent changes (within 2*ctx of each other) into hunks.
 	type hunkRange struct{ lo, hi int }
 	var hunks []hunkRange
 	lo, hi := changedIdx[0], changedIdx[0]
@@ -245,54 +299,84 @@ func unifiedDiff(path string, old, new []byte) string {
 	fmt.Fprintf(&b, "+++ b/%s\n", path)
 
 	for _, hr := range hunks {
-		hunkOldStart := hr.lo - ctx
-		if hunkOldStart < 0 {
-			hunkOldStart = 0
+		// Compute the window of lines to emit for this hunk.
+		oldWinStart := hr.lo - ctx
+		if oldWinStart < 0 {
+			oldWinStart = 0
 		}
-		hunkOldEnd := hr.hi + ctx
-		if hunkOldEnd >= len(oldLines) {
-			hunkOldEnd = len(oldLines) - 1
+		oldWinEnd := hr.hi + ctx
+		if oldWinEnd >= len(oldLines) {
+			oldWinEnd = len(oldLines) - 1
 		}
-		hunkNewStart := hr.lo - ctx
-		if hunkNewStart < 0 {
-			hunkNewStart = 0
+		newWinStart := hr.lo - ctx
+		if newWinStart < 0 {
+			newWinStart = 0
 		}
-		hunkNewEnd := hr.hi + ctx
-		if hunkNewEnd >= len(newLines) {
-			hunkNewEnd = len(newLines) - 1
-		}
-
-		hunkEnd := hunkOldEnd
-		if hunkNewEnd > hunkEnd {
-			hunkEnd = hunkNewEnd
+		newWinEnd := hr.hi + ctx
+		if newWinEnd >= len(newLines) {
+			newWinEnd = len(newLines) - 1
 		}
 
-		oldCount := hunkOldEnd - hunkOldStart + 1
-		newCount := hunkNewEnd - hunkNewStart + 1
+		// The hunk iterates over the union of both windows.
+		winStart := oldWinStart
+		if newWinStart < winStart {
+			winStart = newWinStart
+		}
+		winEnd := oldWinEnd
+		if newWinEnd > winEnd {
+			winEnd = newWinEnd
+		}
 
-		fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n",
-			hunkOldStart+1, oldCount, hunkNewStart+1, newCount)
-
-		for i := hunkOldStart; i <= hunkEnd; i++ {
-			ol, nl := "", ""
-			if i < len(oldLines) {
-				ol = oldLines[i]
-			}
-			if i < len(newLines) {
-				nl = newLines[i]
-			}
+		// Collect lines to emit so we can compute accurate counts before
+		// writing the @@ header.
+		type emitLine struct {
+			kind byte // ' ', '-', '+'
+			text string
+		}
+		var emit []emitLine
+		for i := winStart; i <= winEnd; i++ {
+			ol := lineAt(oldLines, i)
+			nl := lineAt(newLines, i)
 			if ol == nl {
-				fmt.Fprintf(&b, " %s\n", ol)
+				emit = append(emit, emitLine{' ', ol})
 			} else {
 				if i < len(oldLines) {
-					fmt.Fprintf(&b, "-%s\n", ol)
+					emit = append(emit, emitLine{'-', ol})
 				}
 				if i < len(newLines) {
-					fmt.Fprintf(&b, "+%s\n", nl)
+					emit = append(emit, emitLine{'+', nl})
 				}
 			}
+		}
+
+		// Count old and new lines from the collected emit lines.
+		oldCount, newCount := 0, 0
+		for _, e := range emit {
+			switch e.kind {
+			case ' ':
+				oldCount++
+				newCount++
+			case '-':
+				oldCount++
+			case '+':
+				newCount++
+			}
+		}
+
+		fmt.Fprintf(&b, "@@ -%d,%d +%d,%d @@\n",
+			oldWinStart+1, oldCount, newWinStart+1, newCount)
+		for _, e := range emit {
+			fmt.Fprintf(&b, "%c%s\n", e.kind, e.text)
 		}
 	}
 
 	return b.String()
+}
+
+// lineAt returns lines[i] or "" when i is out of bounds.
+func lineAt(lines []string, i int) string {
+	if i < 0 || i >= len(lines) {
+		return ""
+	}
+	return lines[i]
 }
