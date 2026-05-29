@@ -65,6 +65,40 @@ Severity model used by this project:
 - SEP-2663 says it updates Tasks for a `2026-06-30` specification, while the RC announcement and changelog target `2026-07-28`. Treat that date as editorial drift unless corrected in the final SEP/spec.
 - SEP-414 was spot-checked on 2026-05-29: despite its low number relative to the 2026 SEPs, `seps/414-request-meta.md` exists and the SEP index marks it `Final`.
 
+## Implementation Coverage
+
+Last updated: 2026-05-29.
+
+Output model and rule registry:
+
+- Implemented: each finding carries `schema`, `rule`, structured `sep`, `severity`, `enforcement`, `spec_target`, `source`, `message`, optional `detail`, optional `remediation`, `autofix`, and `status`.
+- Implemented: `sep.verification` is `verified` only when the SEP status is `Final` and the SEP file has been found; otherwise it is `unverified`.
+- Implemented: rules with `status: pending-verification` evaluate as `enforcement: "report-only"`.
+- Implemented: Markdown reports always render the severity legend before findings.
+- Documented in `docs/REPORT_SCHEMA.md`.
+
+Live HTTP analyzer coverage:
+
+| Rule id | Phase 2 status | Notes |
+| --- | --- | --- |
+| `server-discover-required` | implemented | Probes `server/discover`; missing, errored, or malformed discovery maps to a finding. |
+| `initialize-handshake-removed` | partial | No `initialize` request is sent. Legacy initialize dependence is inferred from redacted response text. |
+| `protocol-version-per-request` | partial | Sends a read-only `server/discover` request with mismatched HTTP protocol header vs `_meta`; acceptance maps to a finding. |
+| `client-info-capabilities-per-request` | implemented | Sends read-only `tools/list` without `_meta`; acceptance maps to a finding. |
+| `mcp-session-id-removed` | implemented | Detects `Mcp-Session-Id` response header or redacted response-body mention. |
+| `http-standard-headers` | implemented | Sends read-only `tools/list` without `Mcp-Method` and with mismatched `Mcp-Method`; acceptance maps to findings. |
+| `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, `resources/read`, and `prompts/list` results for `ttlMs` and `cacheScope`. |
+| `session-dependent-lists-removed` | not started | Deferred to Phase 4 because it requires cross-connection behavioral comparison. |
+| `x-mcp-header` | not started | Deferred; requires tool schema inspection and header mirroring validation. |
+
+Phase 2 safety posture:
+
+- Probes are read-only by default: `server/discover`, list methods, and `resources/read` only.
+- `tools/call` is not sent in Phase 2.
+- `--allow-mutating-probes` exists as an explicit opt-in, but no mutating probes are implemented yet.
+- Raw probe observations are kept in internal `HTTPTrace`/`HTTPObservation` structs; rules convert observations to findings and do not perform network I/O.
+- Output masks URL userinfo and sensitive query values, and never emits authorization headers, raw response headers, raw response bodies, or network error strings.
+
 ## Competitive/Community Observations Read
 
 - Janix `mcp-validator` focuses on protocol compliance test suites for STDIO and HTTP and currently advertises coverage through 2025-era protocol behavior such as initialization, sessions, ping, and 2025-06-18 features. It is a useful baseline, but it does not center 2026-07-28 stateless migration or hidden session-state detection.

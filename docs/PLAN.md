@@ -4,12 +4,24 @@ Target: `mcp-migrate` v0.1, a Go CLI that probes MCP servers live over stdio or 
 
 This plan is based on `docs/SPEC_RULES.md`. Any rule tagged `status: pending-verification` must be rechecked against the final 2026-07-28 spec before it becomes a hard failure.
 
+## Review Status
+
+Last updated: 2026-05-29.
+
+- Phase 0 is implemented and committed in `6cd1ae8` (`chore: scaffold go cli`).
+- Phase 1 is implemented and committed in `4f9b030` (`feat: add report schema and rule registry`).
+- Phase 2 is implemented and committed in `bfe33b0` (`feat: add live http analyzer probes`).
+- Phase 3 and later have not been started.
+- Validation command used after Phase 2: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server` and require permission to bind localhost ports in sandboxed environments.
+
 ## Product Decisions
 
 - CLI framework: use the standard library `flag` package for v0.1. The command surface is small (`analyze`, later `patch`), avoiding Cobra keeps the binary light and dependency-free. Revisit Cobra only if nested commands, shell completion, or plugin-style command discovery become real needs.
 - Go layout: keep `cmd/mcp-migrate` plus `internal/*`. The Go module layout guide recommends `internal` for non-public implementation packages and `cmd` for installable commands in repositories that may grow supporting packages.
 - Report format: JSONL is the primary interface. Each finding is one JSON object with a versioned `schema` field. Markdown is a renderer over the same model, never a separate analysis path.
 - Rule storage: rules are declarative metadata in `internal/rules`, with each rule linking to a `SPEC_RULES.md` entry and carrying `id`, `sep`, `severity`, `applies_to`, `autofixable`, and `status`.
+- SEP attribution: JSONL renders SEP references as objects. A SEP is `verified` only when its status is `Final` and its source file has been found; Accepted/Draft/In-Review/unindexed entries render as `unverified`.
+- Pending verification: rules tagged `pending-verification` always produce `enforcement: "report-only"` until final-spec reconciliation.
 - Competitive posture: official SDKs may ship their own 2026-07-28 migrations or codemods during the RC validation window. `patch` is a demo hook, not the durable moat. The durable value is cross-language live conformance, hidden state detection, and later `watch`.
 
 ## Phase 0: Repo Bootstrap
@@ -37,6 +49,8 @@ Done:
 
 ## Phase 1: Report and Rule Engine
 
+Status: implemented.
+
 Complexity: M
 
 Dependencies: Phase 0.
@@ -44,18 +58,21 @@ Dependencies: Phase 0.
 Work:
 
 - Define `report.Finding` with fields:
-  `schema`, `rule`, `sep`, `severity`, `spec_target`, `source`, `message`, `detail`, `remediation`, `autofix`, `status`.
-- Implement JSONL writer and Markdown renderer.
-- Implement declarative rule registry seeded from `SPEC_RULES.md`, but do not run protocol probes yet.
-- Add validation that rule IDs are unique and severities/statuses are known.
+  `schema`, `rule`, `sep`, `severity`, `enforcement`, `spec_target`, `source`, `message`, `detail`, `remediation`, `autofix`, `status`.
+- Implement JSONL writer and Markdown renderer with a severity legend at the top of every Markdown report.
+- Implement declarative rule registry seeded from `SPEC_RULES.md`, without protocol probes in the rules package.
+- Add validation that rule IDs are unique, severities/statuses are known, and each rule has a SEP-like reference.
+- Document the JSONL schema in `docs/REPORT_SCHEMA.md`.
 
 Done:
 
-- JSONL tests cover escaping, multiple findings, and empty output.
-- Markdown tests cover grouping by severity and stable ordering.
-- Registry tests catch duplicate IDs and missing spec references.
+- JSONL tests cover structured SEP output, enforcement, and empty output.
+- Markdown tests cover empty reports plus the severity legend and deprecation-window wording.
+- Registry tests catch duplicate IDs, missing SEP references, seeded rules, SEP verification tagging, and pending-verification report-only behavior.
 
 ## Phase 2: Live HTTP Analyzer
+
+Status: implemented.
 
 Complexity: L
 
@@ -65,20 +82,34 @@ Work:
 
 - Implement HTTP probe client for Streamable HTTP.
 - Probe `server/discover` with 2026-07-28 metadata.
-- Probe legacy `initialize` behavior only as a compatibility signal, not as the desired path.
+- Do not send legacy `initialize`; legacy servers are detected read-only through failed `server/discover`/list probes, `Mcp-Session-Id` signals, and redacted response text mentioning initialize.
 - Send representative requests with and without:
   `MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`, and per-request `_meta`.
 - Validate response behavior for:
   protocol-version mismatch, missing headers, header/body mismatch, `tools/list` cache fields, and visible session requirements.
 - Record all raw probe observations in an internal trace structure, then convert to findings through rules.
+- Keep probes read-only by default. Implemented HTTP probes are `server/discover`, `tools/list`, `resources/list`, `prompts/list`, and `resources/read` for a URI returned by `resources/list`.
+- Add `--allow-mutating-probes` as an explicit opt-in flag, disabled by default. No mutating HTTP probes are implemented in Phase 2.
+- Redact secrets from output: URL userinfo and sensitive query parameters are masked; response bodies, header values, network errors, and authorization material are not emitted.
 
 Done:
 
 - Detects servers that require `Mcp-Session-Id`.
 - Detects missing `server/discover`.
 - Detects missing/ignored required HTTP headers.
-- Detects `tools/list`/resource list cache metadata gaps where probeable.
+- Detects per-request `_meta` acceptance gaps where probeable.
+- Detects protocol-version header/_meta mismatch acceptance where probeable.
+- Detects `tools/list`, `resources/list`, `resources/read`, and `prompts/list` cache metadata gaps where probeable.
 - Integration tests use `httptest.Server` fixtures for compliant, legacy, and mixed-behavior servers.
+- Tests assert no `tools/call` is sent and no fixture secrets leak into findings.
+
+Current Phase 2 Limitations:
+
+- The analyzer does not yet probe `Mcp-Name` mismatch for `resources/read`; it sends the required matching header when a resource URI is discoverable.
+- The analyzer does not yet classify session-dependent list changes across multiple connections; that belongs to Phase 4 hidden-state detection.
+- The analyzer does not yet inspect `x-mcp-header` tool schema behavior.
+- The analyzer does not yet perform OAuth/auth flow probes.
+- A real-server smoke test is intentionally deferred to a release gate; Phase 2 only requires arbitrary `--url` support and fixture coverage.
 
 ## Phase 3: Live STDIO Analyzer
 
