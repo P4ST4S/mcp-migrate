@@ -33,9 +33,9 @@ type Rule struct {
 	// may be caused by time-based content, non-deterministic ordering,
 	// pagination cursors, or eventually-consistent backends — so findings
 	// produced by these rules are always report-only regardless of SEP status.
-	InferentialEvidence               bool
-	Message                           string
-	Remediation                       string
+	InferentialEvidence bool
+	Message             string
+	Remediation         string
 }
 
 func (r Rule) Enforcement() report.Enforcement {
