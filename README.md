@@ -185,13 +185,7 @@ UPDATE_EXAMPLES=1 go test ./internal/analyze/live
 
 ## Contributing
 
-Useful feedback at this stage:
-
-- a rule that diverges from the RC spec text;
-- a finding that is too severe or not actionable;
-- a real server that exposes a migration case not covered by existing fixtures.
-
-Rules must trace to [`docs/SPEC_RULES.md`](docs/SPEC_RULES.md). Every SEP reference that is not `Final` must remain `unverified` in the rule registry.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for contribution guidelines, ground rules for new rules, patch requirements, and the evidence-strength model.
 
 Internal documentation:
 
