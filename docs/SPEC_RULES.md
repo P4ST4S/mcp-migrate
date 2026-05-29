@@ -7,6 +7,7 @@ Primary sources read:
 - Official RC announcement: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 - Official 2026 roadmap: https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/
 - Official draft changelog: https://modelcontextprotocol.io/specification/draft/changelog
+- Official draft caching utility page: https://modelcontextprotocol.io/specification/draft/server/utilities/caching
 - Full compare URL named by the changelog: https://github.com/modelcontextprotocol/specification/compare/2025-11-25...draft
 - SEP index: https://modelcontextprotocol.io/seps
 - Deprecated registry: https://modelcontextprotocol.io/specification/draft/deprecated
@@ -43,7 +44,7 @@ Severity model used by this project:
 | `includecontext-values-deprecated` | SEP-2596 | Draft | Sampling `includeContext: "thisServer"` / `"allServers"` were soft-deprecated in 2025-11-25. | Reclassified as Deprecated; migration is omit the field or use `"none"`. Removal follows Sampling. | `deprecated` | Registry explicitly tracks the values. |
 | `tasks-core-to-extension` | SEP-2663 | Final | Experimental `tasks/*` lived in the 2025-11-25 core protocol, including `tasks/result` and `tasks/list`. | Tasks move to official extension `io.modelcontextprotocol/tasks`; lifecycle uses `tools/call` returning `resultType: "task"`, then `tasks/get`, `tasks/update`, and `tasks/cancel`. `tasks/list` is removed; `tasks/result` is replaced. | `breaking` | Core `tasks/*` callers must migrate to extension negotiation and the new method set. |
 | `extensions-capabilities` | SEP-2133 | Final | Extensions had no formal framework. | `ClientCapabilities` and `ServerCapabilities` include an `extensions` map keyed by reverse-DNS extension IDs. | `info` | Important for Tasks/MCP Apps detection; non-support is not by itself an error unless an extension is required. |
-| `cacheable-results-required` | SEP-2549 | Accepted | List/read results had no protocol TTL/cache scope. | `tools/list`, `prompts/list`, `resources/list`, `resources/read`, and `resources/templates/list` results require `ttlMs` and `cacheScope`. | `breaking` | Changelog says these fields are required on affected results. |
+| `cacheable-results-required` | SEP-2549 | Accepted | List/read results had no protocol TTL/cache scope. | `tools/list`, `prompts/list`, `resources/list`, `resources/read`, and `resources/templates/list` results require `ttlMs` and `cacheScope`. | `breaking`, `enforcement: report-only` while SEP-2549 is unverified | The official draft caching page says servers MUST include caching hints on affected results and defines `ttlMs` / `cacheScope`; because SEP-2549 is Accepted rather than Final, findings are report-only until final-spec reconciliation. |
 | `trace-context-meta` | SEP-414 | Final | Trace propagation through `_meta` was an ecosystem convention. | `_meta` keys `traceparent`, `tracestate`, and `baggage` are documented for W3C Trace Context/Baggage propagation. | `info` | Interop/observability improvement, not a migration blocker. |
 | `resource-not-found-code` | SEP-2164 | Draft | Spec recommended `-32002` for missing resources; SDKs varied. | Missing resource errors should use JSON-RPC `-32602` Invalid Params; data SHOULD include the missing `uri`; empty `contents` is not a not-found response. | `breaking` | The official changelog states the code changes to `-32602`; patch can safely replace literal `-32002` when the context is resource-not-found. |
 | `json-schema-2020-12-tools` | SEP-2106 | Draft | Tool `inputSchema`/`outputSchema` were restricted shapes; `structuredContent` was effectively object-shaped. | `inputSchema` still requires root `type: "object"` but supports JSON Schema 2020-12 keywords; `outputSchema` is unrestricted JSON Schema; `structuredContent` can be any JSON value. | `warning` | Mostly loosening, but validators that reject composition/array output will produce false negatives. |
@@ -58,6 +59,7 @@ Severity model used by this project:
 
 - The final URL for the 2026-07-28 changelog is currently the draft URL: `https://modelcontextprotocol.io/specification/draft/changelog`. Re-check after 2026-07-28 for a versioned `/specification/2026-07-28/changelog` page.
 - SEP-2575, SEP-2549, and SEP-2322 are Accepted rather than Final in the current SEP index; their normative text can still change before final release.
+- Cacheability MUST vs SHOULD was re-checked on 2026-05-29 against the official draft caching utility page. The page says servers MUST include caching hints on affected results, while client freshness behavior around positive, absent, or negative `ttlMs` is mostly SHOULD/MAY guidance. Therefore the detector remains valid, but enforcement remains `report-only` while SEP-2549 is not Final.
 - SEP-2164 and SEP-2106 are Draft, and SEP-2468 is In-Review, despite the RC blog/changelog presenting their effects as part of the RC. Treat exact detector behavior as pending until final spec freeze.
 - The RC blog example uses `resultType: "inputRequired"`, while SEP-2322 uses `resultType: "input_required"`. The analyzer must support both while reporting the mismatch as `status: pending-verification` until the final schema resolves it.
 - SEP-2322 names the request type `ElicitRequest` and method `elicitation/create`; the blog describes an `InputRequiredResult` object with an item `"type": "elicitation"`. Prefer the schema/SEP for implementation, but retain a note in findings when servers use the blog shape.
@@ -74,6 +76,7 @@ Output model and rule registry:
 - Implemented: each finding carries `schema`, `rule`, structured `sep`, `severity`, `enforcement`, `spec_target`, `source`, `message`, optional `detail`, optional `remediation`, `autofix`, and `status`.
 - Implemented: `sep.verification` is `verified` only when the SEP status is `Final` and the SEP file has been found; otherwise it is `unverified`.
 - Implemented: rules with `status: pending-verification` evaluate as `enforcement: "report-only"`.
+- Implemented: rules whose `sep.verification` is `unverified` evaluate as `enforcement: "report-only"` by default, unless a rule carries an explicit documented enforcement override. No current rule uses that override.
 - Implemented: Markdown reports always render the severity legend before findings.
 - Documented in `docs/REPORT_SCHEMA.md`.
 
@@ -89,6 +92,7 @@ Live HTTP analyzer coverage:
 | `http-standard-headers` | implemented | Sends read-only `tools/list` without `Mcp-Method` and with mismatched `Mcp-Method`; acceptance maps to findings. |
 | `initialize-text-heuristic` | implemented | HTTP-only weak signal for response text mentioning initialize; warning severity only. |
 | `cacheable-results-required` | implemented | Checks accepted `tools/list`, `resources/list`, and `prompts/list` by default. `resources/read` is checked only when explicitly opted in. |
+| `resource-not-found-code` | implemented for opt-in `resources/read` | When `--allow-resource-read` is set, maps legacy `-32002` from `resources/read` to a pending-verification report-only finding. |
 | `session-dependent-lists-removed` | not started | Deferred to Phase 4 because it requires cross-connection behavioral comparison. |
 | `x-mcp-header` | not started | Deferred; requires tool schema inspection and header mirroring validation. |
 
@@ -125,6 +129,7 @@ Review artifacts:
 - `testdata/examples/http-compliant.{jsonl,md}`
 - `testdata/examples/http-legacy.{jsonl,md}`
 - `testdata/examples/http-mixed.{jsonl,md}`
+- `testdata/examples/http-resource-not-found.{jsonl,md}`
 - `testdata/examples/stdio-compliant.{jsonl,md}`
 - `testdata/examples/stdio-legacy.{jsonl,md}`
 - `testdata/examples/stdio-mixed.{jsonl,md}`

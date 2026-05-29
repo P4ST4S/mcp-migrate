@@ -22,7 +22,7 @@ Last updated: 2026-05-29.
 - Report format: JSONL is the primary interface. Each finding is one JSON object with a versioned `schema` field. Markdown is a renderer over the same model, never a separate analysis path.
 - Rule storage: rules are declarative metadata in `internal/rules`, with each rule linking to a `SPEC_RULES.md` entry and carrying `id`, `sep`, `severity`, `applies_to`, `autofixable`, and `status`.
 - SEP attribution: JSONL renders SEP references as objects. A SEP is `verified` only when its status is `Final` and its source file has been found; Accepted/Draft/In-Review/unindexed entries render as `unverified`.
-- Pending verification: rules tagged `pending-verification` always produce `enforcement: "report-only"` until final-spec reconciliation.
+- Enforcement policy: rules tagged `pending-verification` always produce `enforcement: "report-only"` until final-spec reconciliation. Rules whose `sep.verification` is `unverified` also produce `report-only` by default, unless a rule carries an explicit documented enforcement override. No current rule uses that override.
 - Competitive posture: official SDKs may ship their own 2026-07-28 migrations or codemods during the RC validation window. `patch` is a demo hook, not the durable moat. The durable value is cross-language live conformance, hidden state detection, and later `watch`.
 
 ## Phase 0: Repo Bootstrap
@@ -69,7 +69,7 @@ Done:
 
 - JSONL tests cover structured SEP output, enforcement, and empty output.
 - Markdown tests cover empty reports plus the severity legend and deprecation-window wording.
-- Registry tests catch duplicate IDs, missing SEP references, seeded rules, SEP verification tagging, and pending-verification report-only behavior.
+- Registry tests catch duplicate IDs, missing SEP references, seeded rules, SEP verification tagging, pending-verification report-only behavior, unverified-SEP report-only behavior, and Final/verified SEP enforcement.
 
 ## Phase 2: Live HTTP Analyzer
 

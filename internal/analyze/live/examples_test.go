@@ -19,6 +19,7 @@ func TestExamplesAreCurrent(t *testing.T) {
 		{name: "http-compliant", findings: exampleHTTPFindings(t, compliantProfile)},
 		{name: "http-legacy", findings: exampleHTTPFindings(t, legacyProfile)},
 		{name: "http-mixed", findings: exampleHTTPFindings(t, mixedProfile)},
+		{name: "http-resource-not-found", findings: exampleHTTPFindingsWithOptions(t, resourceNotFoundProfile, Options{AllowResourceRead: true})},
 		{name: "stdio-compliant", findings: exampleSTDIOFindings(t, "compliant")},
 		{name: "stdio-legacy", findings: exampleSTDIOFindings(t, "legacy")},
 		{name: "stdio-mixed", findings: exampleSTDIOFindings(t, "mixed")},
@@ -34,10 +35,18 @@ func TestExamplesAreCurrent(t *testing.T) {
 
 func exampleHTTPFindings(t *testing.T, profile fixtureProfile) []report.Finding {
 	t.Helper()
+	return exampleHTTPFindingsWithOptions(t, profile, Options{})
+}
+
+func exampleHTTPFindingsWithOptions(t *testing.T, profile fixtureProfile, opts Options) []report.Finding {
+	t.Helper()
 	fixture := newHTTPFixture(t, profile)
 	defer fixture.Close()
 
-	findings, err := Analyze(Options{Transport: "http", URL: fixture.URL, SpecTarget: spec.TargetVersion})
+	opts.Transport = "http"
+	opts.URL = fixture.URL
+	opts.SpecTarget = spec.TargetVersion
+	findings, err := Analyze(opts)
 	if err != nil {
 		t.Fatalf("Analyze returned error: %v", err)
 	}

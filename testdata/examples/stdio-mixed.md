@@ -14,7 +14,7 @@
 
 - Severity: `breaking`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2575` (`Accepted`, `unverified`)
 
 Request is missing per-request client identity or capabilities.
@@ -27,37 +27,37 @@ Remediation: Send io.modelcontextprotocol/clientInfo and io.modelcontextprotocol
 
 - Severity: `breaking`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2549` (`Accepted`, `unverified`)
 
 Cacheable result is missing ttlMs or cacheScope.
 
 tools/list stdio response was accepted but did not include both ttlMs and cacheScope.
 
-Remediation: Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 changelog.
+Remediation: Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 draft caching spec; this remains report-only until SEP-2549 is Final.
 
 ## cacheable-results-required
 
 - Severity: `breaking`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2549` (`Accepted`, `unverified`)
 
 Cacheable result is missing ttlMs or cacheScope.
 
 resources/list stdio response was accepted but did not include both ttlMs and cacheScope.
 
-Remediation: Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 changelog.
+Remediation: Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 draft caching spec; this remains report-only until SEP-2549 is Final.
 
 ## cacheable-results-required
 
 - Severity: `breaking`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2549` (`Accepted`, `unverified`)
 
 Cacheable result is missing ttlMs or cacheScope.
 
 prompts/list stdio response was accepted but did not include both ttlMs and cacheScope.
 
-Remediation: Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 changelog.
+Remediation: Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 draft caching spec; this remains report-only until SEP-2549 is Final.

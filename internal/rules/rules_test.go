@@ -86,3 +86,51 @@ func TestPendingVerificationIsReportOnly(t *testing.T) {
 		t.Fatalf("expected report-only finding, got %s", finding.Enforcement)
 	}
 }
+
+func TestUnverifiedSEPIsReportOnlyByDefault(t *testing.T) {
+	registry, err := DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry returned error: %v", err)
+	}
+
+	for _, id := range []string{
+		"server-discover-required",
+		"client-info-capabilities-per-request",
+		"cacheable-results-required",
+	} {
+		t.Run(id, func(t *testing.T) {
+			rule, ok := registry.Find(id)
+			if !ok {
+				t.Fatalf("rule %q not found", id)
+			}
+			if got := rule.SEPRef().Verification; got != report.SEPUnverified {
+				t.Fatalf("expected unverified sep, got %s", got)
+			}
+			if got := rule.Enforcement(); got != report.EnforcementReportOnly {
+				t.Fatalf("expected report-only enforcement, got %s", got)
+			}
+		})
+	}
+}
+
+func TestVerifiedFinalSEPsRemainEnforced(t *testing.T) {
+	registry, err := DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry returned error: %v", err)
+	}
+
+	for _, id := range []string{"mcp-session-id-removed", "http-standard-headers"} {
+		t.Run(id, func(t *testing.T) {
+			rule, ok := registry.Find(id)
+			if !ok {
+				t.Fatalf("rule %q not found", id)
+			}
+			if got := rule.SEPRef().Verification; got != report.SEPVerified {
+				t.Fatalf("expected verified sep, got %s", got)
+			}
+			if got := rule.Enforcement(); got != report.EnforcementEnforced {
+				t.Fatalf("expected enforced, got %s", got)
+			}
+		})
+	}
+}

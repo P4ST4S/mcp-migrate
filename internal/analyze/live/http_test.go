@@ -39,6 +39,9 @@ func TestHTTPAnalyzeLegacyServer(t *testing.T) {
 	assertFinding(t, findings, "server-discover-required")
 	assertFinding(t, findings, "mcp-session-id-removed")
 	assertFinding(t, findings, "initialize-text-heuristic")
+	assertFindingEnforcement(t, findings, "server-discover-required", report.EnforcementReportOnly)
+	assertFindingEnforcement(t, findings, "mcp-session-id-removed", report.EnforcementEnforced)
+	assertFindingEnforcement(t, findings, "initialize-text-heuristic", report.EnforcementReportOnly)
 	assertNoFinding(t, findings, "initialize-handshake-removed")
 	assertNoToolCall(t, fixture.Methods())
 	assertNoSecretLeak(t, findings, "super-secret")
@@ -57,6 +60,9 @@ func TestHTTPAnalyzeMixedServer(t *testing.T) {
 	assertFinding(t, findings, "http-standard-headers")
 	assertFinding(t, findings, "cacheable-results-required")
 	assertFinding(t, findings, "client-info-capabilities-per-request")
+	assertFindingEnforcement(t, findings, "http-standard-headers", report.EnforcementEnforced)
+	assertFindingEnforcement(t, findings, "cacheable-results-required", report.EnforcementReportOnly)
+	assertFindingEnforcement(t, findings, "client-info-capabilities-per-request", report.EnforcementReportOnly)
 	assertNoFinding(t, findings, "mcp-session-id-removed")
 	assertNoToolCall(t, fixture.Methods())
 }
@@ -85,6 +91,19 @@ func TestHTTPAnalyzeResourceReadOptIn(t *testing.T) {
 	if !slices.Contains(fixture.Methods(), "resources/read") {
 		t.Fatalf("expected resources/read with opt-in, got methods %v", fixture.Methods())
 	}
+}
+
+func TestHTTPResourceNotFoundCodeIsPendingReportOnly(t *testing.T) {
+	fixture := newHTTPFixture(t, resourceNotFoundProfile)
+	defer fixture.Close()
+
+	findings, err := Analyze(Options{Transport: "http", URL: fixture.URL, SpecTarget: spec.TargetVersion, AllowResourceRead: true})
+	if err != nil {
+		t.Fatalf("Analyze returned error: %v", err)
+	}
+
+	assertFinding(t, findings, "resource-not-found-code")
+	assertFindingEnforcement(t, findings, "resource-not-found-code", report.EnforcementReportOnly)
 }
 
 func TestHTTPInitializeTextFalsePositiveIsWeakWarning(t *testing.T) {
@@ -146,6 +165,7 @@ const (
 	mixedProfile
 	initializeMentionNoLegacyProfile
 	legacySilentProfile
+	resourceNotFoundProfile
 )
 
 type httpFixture struct {
@@ -189,6 +209,8 @@ func (f *httpFixture) handle(w http.ResponseWriter, r *http.Request) {
 		f.handleInitializeMentionNoLegacy(w, r, req)
 	case legacySilentProfile:
 		f.handleLegacySilent(w, r, req)
+	case resourceNotFoundProfile:
+		f.handleResourceNotFound(w, r, req)
 	default:
 		writeRPCError(w, http.StatusInternalServerError, req.ID, -32603, "unknown fixture")
 	}
@@ -241,6 +263,14 @@ func (f *httpFixture) handleInitializeMentionNoLegacy(w http.ResponseWriter, r *
 
 func (f *httpFixture) handleLegacySilent(w http.ResponseWriter, r *http.Request, req rpcRequest) {
 	writeRPCError(w, http.StatusBadRequest, req.ID, -32000, "unsupported request")
+}
+
+func (f *httpFixture) handleResourceNotFound(w http.ResponseWriter, r *http.Request, req rpcRequest) {
+	if req.Method == "resources/read" {
+		writeRPCError(w, http.StatusBadRequest, req.ID, -32002, "resource not found")
+		return
+	}
+	f.handleCompliant(w, r, req)
 }
 
 func validate2026Headers(r *http.Request, req rpcRequest) string {
@@ -373,6 +403,19 @@ func assertFindingSeverity(t *testing.T, findings []report.Finding, rule string,
 		if finding.Rule == rule {
 			if finding.Severity != severity {
 				t.Fatalf("expected severity %s for %q, got %s", severity, rule, finding.Severity)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected finding %q in %#v", rule, findings)
+}
+
+func assertFindingEnforcement(t *testing.T, findings []report.Finding, rule string, enforcement report.Enforcement) {
+	t.Helper()
+	for _, finding := range findings {
+		if finding.Rule == rule {
+			if finding.Enforcement != enforcement {
+				t.Fatalf("expected enforcement %s for %q, got %s", enforcement, rule, finding.Enforcement)
 			}
 			return
 		}

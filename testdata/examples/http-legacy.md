@@ -27,7 +27,7 @@ Remediation: Replace protocol sessions with explicit application handles passed 
 
 - Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2575` (`Accepted`, `unverified`)
 
 Response text mentions initialize, which is only a weak legacy signal.
@@ -40,7 +40,7 @@ Remediation: Confirm with stronger evidence such as server/discover failure plus
 
 - Severity: `breaking`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2575` (`Accepted`, `unverified`)
 
 Server does not expose the stateless server/discover RPC.

@@ -18,7 +18,7 @@ Security note: output is sanitized. URL userinfo, sensitive query parameters, an
 | `sep.verification` | string | yes, when `sep` exists | `verified` only when the SEP status is `Final` and the SEP file was found. Otherwise `unverified`. Do not treat unverified SEP ids as authoritative. |
 | `sep.source` | string | no | URL of the SEP file when found. Empty for unindexed ids. |
 | `severity` | string | yes | One of `breaking`, `deprecated`, `warning`, `info`. See legend below. |
-| `enforcement` | string | yes | `enforced` or `report-only`. Rules with `status: pending-verification` are always `report-only` until reconciled with the final spec. |
+| `enforcement` | string | yes | `enforced` or `report-only`. Rules with `status: pending-verification` are always `report-only` until reconciled with the final spec. Rules whose `sep.verification` is `unverified` are also `report-only` by default unless the rule documents an explicit enforcement override. |
 | `spec_target` | string | yes | Target MCP spec version, currently `2026-07-28`. |
 | `source` | object | yes | Where the finding came from. |
 | `source.mode` | string | yes | `live` or `static`. |

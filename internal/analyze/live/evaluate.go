@@ -53,6 +53,10 @@ func EvaluateHTTPTrace(trace HTTPTrace, registry *rules.Registry) []report.Findi
 		}
 	}
 
+	if obs, ok := byProbe["resources-read"]; ok && obs.HasRPCError && obs.RPCErrorCode == -32002 {
+		builder.add("resource-not-found-code", "resources/read returned legacy JSON-RPC error code -32002 for a missing resource.")
+	}
+
 	return builder.findings
 }
 

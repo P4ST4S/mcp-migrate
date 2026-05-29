@@ -20,18 +20,23 @@ type SEP struct {
 }
 
 type Rule struct {
-	ID          string
-	SEP         SEP
-	Severity    report.Severity
-	AppliesTo   []string
-	Autofixable bool
-	Status      string
-	Message     string
-	Remediation string
+	ID                                string
+	SEP                               SEP
+	Severity                          report.Severity
+	AppliesTo                         []string
+	Autofixable                       bool
+	Status                            string
+	EnforceUnverifiedSEPJustification string
+	Message                           string
+	Remediation                       string
 }
 
 func (r Rule) Enforcement() report.Enforcement {
 	if r.Status == StatusPendingVerification {
+		return report.EnforcementReportOnly
+	}
+	sep := r.SEPRef()
+	if sep != nil && sep.Verification == report.SEPUnverified && r.EnforceUnverifiedSEPJustification == "" {
 		return report.EnforcementReportOnly
 	}
 	return report.EnforcementEnforced
@@ -340,7 +345,7 @@ var defaultRules = []Rule{
 		AppliesTo:   []string{"live"},
 		Status:      StatusConfirmed,
 		Message:     "Cacheable result is missing ttlMs or cacheScope.",
-		Remediation: "Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 changelog.",
+		Remediation: "Return ttlMs and cacheScope on list/read results covered by the 2026-07-28 draft caching spec; this remains report-only until SEP-2549 is Final.",
 	},
 	{
 		ID:          "trace-context-meta",

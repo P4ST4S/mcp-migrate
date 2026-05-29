@@ -28,6 +28,8 @@ func TestSTDIOAnalyzeLegacyServer(t *testing.T) {
 	findings, methods := runSTDIOAnalyze(t, "legacy", "--token stdio-secret")
 	assertFinding(t, findings, "server-discover-required")
 	assertFinding(t, findings, "initialize-handshake-removed")
+	assertFindingEnforcement(t, findings, "server-discover-required", report.EnforcementReportOnly)
+	assertFindingEnforcement(t, findings, "initialize-handshake-removed", report.EnforcementReportOnly)
 	assertNoFinding(t, findings, "initialize-text-heuristic")
 	assertNoToolCall(t, methods)
 	assertNoSecretLeak(t, findings, "stdio-secret")
@@ -38,6 +40,8 @@ func TestSTDIOAnalyzeMixedServer(t *testing.T) {
 	findings, methods := runSTDIOAnalyze(t, "mixed", "")
 	assertFinding(t, findings, "client-info-capabilities-per-request")
 	assertFinding(t, findings, "cacheable-results-required")
+	assertFindingEnforcement(t, findings, "client-info-capabilities-per-request", report.EnforcementReportOnly)
+	assertFindingEnforcement(t, findings, "cacheable-results-required", report.EnforcementReportOnly)
 	assertNoFinding(t, findings, "initialize-handshake-removed")
 	assertNoToolCall(t, methods)
 }
