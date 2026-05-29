@@ -239,8 +239,12 @@ Done:
   standard-library packages used in production and test code (`slices` package, introduced
   in 1.21, is used in test files only).
 - CI (`.github/workflows/ci.yml`) uses `go-version-file: go.mod` so the runner always
-  matches the declared minimum. A separate `docker` job builds the image and smoke-tests it
-  with `docker run --rm mcp-migrate:ci analyze --help` after `test` passes.
+  matches the declared minimum. A separate `docker` job builds the image and verifies the
+  binary starts with `docker run --rm mcp-migrate:ci analyze --help` after `test` passes.
+  A live-server smoke-test (stdio or HTTP against a real `2026-07-28` SDK) is intentionally
+  deferred until the official TypeScript SDK ships `2026-07-28` support — currently `1.29.0`
+  implements `2025-11-25` only. A Go home-made fixture would duplicate the existing
+  integration tests without adding value.
 - Dockerfile uses `golang:1.21-alpine` as the build stage (matches `go.mod`) and
   `gcr.io/distroless/static-debian12` as the runtime stage (no shell, no libc). Build flags:
   `CGO_ENABLED=0 -trimpath` for a reproducible, dependency-free binary.

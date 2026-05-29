@@ -26,10 +26,10 @@ jobs:
       - name: Build Docker image
         run: docker build -t mcp-migrate:ci .
 
-      - name: Smoke-test Docker image
-        # The Go `flag` package exits 2 on --help; that is expected, not a crash.
-        # Capture the exit code manually so set -e does not abort the step,
-        # then fail on anything other than 0 or 2.
+      - name: Verify binary starts
+        # Confirm the image runs. The Go `flag` package exits 2 on --help;
+        # capture the code manually so set -e does not abort the step,
+        # then fail only on unexpected codes.
         run: |
           set +e
           docker run --rm mcp-migrate:ci analyze --help
