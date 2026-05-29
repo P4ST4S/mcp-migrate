@@ -20,9 +20,11 @@ func TestExamplesAreCurrent(t *testing.T) {
 		{name: "http-legacy", findings: exampleHTTPFindings(t, legacyProfile)},
 		{name: "http-mixed", findings: exampleHTTPFindings(t, mixedProfile)},
 		{name: "http-resource-not-found", findings: exampleHTTPFindingsWithOptions(t, resourceNotFoundProfile, Options{AllowResourceRead: true})},
+		{name: "http-stateful-lists", findings: exampleHTTPFindings(t, statefulListProfile)},
 		{name: "stdio-compliant", findings: exampleSTDIOFindings(t, "compliant")},
 		{name: "stdio-legacy", findings: exampleSTDIOFindings(t, "legacy")},
 		{name: "stdio-mixed", findings: exampleSTDIOFindings(t, "mixed")},
+		{name: "stdio-stateful-lists", findings: exampleSTDIOFindings(t, "stateful")},
 	}
 
 	for _, example := range examples {
