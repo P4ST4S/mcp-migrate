@@ -63,6 +63,7 @@ Severity model used by this project:
 - SEP-2322 names the request type `ElicitRequest` and method `elicitation/create`; the blog describes an `InputRequiredResult` object with an item `"type": "elicitation"`. Prefer the schema/SEP for implementation, but retain a note in findings when servers use the blog shape.
 - The blog says Roots, Sampling, and Logging are annotation-only deprecations that continue to work, while SEP-2575 and the changelog remove `logging/setLevel`, top-level `roots/list`, and several related flows. The rule engine should split "feature deprecated" from "specific method removed" and mark logging method enforcement pending final verification.
 - SEP-2663 says it updates Tasks for a `2026-06-30` specification, while the RC announcement and changelog target `2026-07-28`. Treat that date as editorial drift unless corrected in the final SEP/spec.
+- SEP-414 was spot-checked on 2026-05-29: despite its low number relative to the 2026 SEPs, `seps/414-request-meta.md` exists and the SEP index marks it `Final`.
 
 ## Competitive/Community Observations Read
 
