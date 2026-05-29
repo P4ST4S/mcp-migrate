@@ -13,8 +13,9 @@ Last updated: 2026-05-29.
 - Phase 2 is implemented and committed in `bfe33b0` (`feat: add live http analyzer probes`).
 - Phase 3 is implemented in the current branch.
 - Phase 4 is implemented in the current branch.
-- Phase 5 and later have not been started.
-- Validation command used after Phase 3: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server`; stdio integration tests launch helper processes. Both may require extra permissions in sandboxed environments.
+- Phase 5 is implemented in the current branch.
+- Phase 6 and later have not been started.
+- Validation command used after Phase 5: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server`; stdio integration tests launch helper processes. Both may require extra permissions in sandboxed environments.
 
 ## Product Decisions
 
@@ -181,6 +182,8 @@ Current Phase 4 Limitations:
 
 ## Phase 5: Safe Patch Engine
 
+Status: implemented.
+
 Complexity: M
 
 Dependencies: Phase 1.
@@ -189,16 +192,30 @@ Work:
 
 - Implement dry-run-first patch command.
 - Support only safe transformations:
-  resource-not-found error literal `-32002` to `-32602` in clearly scoped contexts, and HTTP request header injection in simple recognized client call sites.
+  resource-not-found error literal `-32002` to `-32602` in clearly scoped contexts.
 - Require `--write` for filesystem writes.
 - Make patches idempotent.
-- Emit patch findings as JSONL and optional unified diff.
+- Emit patch findings as unified diff.
 
 Done:
 
-- Dry-run is default and writes nothing.
-- `--write` updates files only when the transformation is context-confirmed.
-- Tests cover idempotency and refusal for ambiguous code.
+- `mcp-migrate patch --path <file|dir>` scans Go, JS/TS, and Python source files.
+- Detection strategy: regex match on `-32002` as a standalone token; confirmation requires
+  a resource-not-found context signal (`resources/read`, `resource not found`, `resource_not_found`,
+  or `ResourceNotFound`) within 12 lines of the occurrence. Occurrences with no context signal
+  are counted as `Skipped` and never touched.
+- Dry-run is default: diffs are produced and printed, no file is written.
+- `--write` rewrites files in-place; permissions are preserved.
+- Patches are idempotent: a second pass on an already-patched file produces zero changes.
+- Evidence-strength principle mirrors Phase 4: the patcher only acts on context-confirmed
+  occurrences and reports ambiguous ones rather than silently skipping or guessing.
+- Tests cover: dry-run file safety, write correctness for Go/JS/Python, idempotency,
+  ambiguous context refusal, directory walk, unsupported extension skip, error conditions,
+  and diff content sanity.
+- Fixtures in `testdata/patch/` provide input/expected pairs for Go, JS, Python, and an
+  ambiguous case that must produce zero changes.
+- HTTP request header injection deferred: requires AST-level analysis per language SDK
+  and is out of scope for v0.1.
 - No automatic refactor of server state is implemented.
 
 ## Phase 6: Packaging and CI Hardening

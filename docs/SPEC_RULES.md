@@ -128,15 +128,38 @@ Phase 3 safety posture:
 - The stdio `initialize` probe is allowed because it only affects the disposable child process; this is intentionally different from HTTP remote probing.
 - Raw probe observations are kept in internal `STDIOTrace`/`STDIOObservation` structs; rules convert observations to findings and do not perform process I/O.
 
+Phase 5 patch engine coverage:
+
+| Transformation | Status | Notes |
+| --- | --- | --- |
+| `resource-not-found-code` (`-32002` → `-32602`) | implemented | Context-confirmed replacement in Go, JS/TS, Python. Occurrences without a `resources/read` or `resource not found` signal within 12 lines are skipped and reported. Idempotent. |
+| HTTP header injection (`Mcp-Method`, `Mcp-Name`) | not started | Requires per-language AST analysis of SDK call sites; deferred to a later patch revision. |
+
+Patch safety posture:
+
+- Dry-run is default; `--write` required for filesystem mutations.
+- Context window detection prevents false positives in generic error-handler code.
+- Evidence-strength principle: only context-confirmed occurrences are rewritten; ambiguous ones are reported as `Skipped`, never silently dropped or guessed.
+- Patches are idempotent: a second pass on an already-patched file produces zero changes.
+- Supported file extensions: `.go`, `.js`, `.ts`, `.jsx`, `.tsx`, `.py`.
+
 Review artifacts:
 
 - `testdata/examples/http-compliant.{jsonl,md}`
 - `testdata/examples/http-legacy.{jsonl,md}`
 - `testdata/examples/http-mixed.{jsonl,md}`
 - `testdata/examples/http-resource-not-found.{jsonl,md}`
+- `testdata/examples/http-stateful-lists.{jsonl,md}`
+- `testdata/examples/http-explicit-handle-lists.{jsonl,md}`
 - `testdata/examples/stdio-compliant.{jsonl,md}`
 - `testdata/examples/stdio-legacy.{jsonl,md}`
 - `testdata/examples/stdio-mixed.{jsonl,md}`
+- `testdata/examples/stdio-stateful-lists.{jsonl,md}`
+- `testdata/examples/stdio-explicit-handle-lists.{jsonl,md}`
+- `testdata/patch/go/resource_handler/` — Go input/expected pair
+- `testdata/patch/js/` — JS input/expected pair
+- `testdata/patch/python/` — Python input/expected pair
+- `testdata/patch/ambiguous/` — must produce zero changes (no context signal)
 
 ## Competitive/Community Observations Read
 

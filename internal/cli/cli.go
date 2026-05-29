@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/P4ST4S/mcp-migrate/internal/analyze/live"
+	"github.com/P4ST4S/mcp-migrate/internal/patch"
 	"github.com/P4ST4S/mcp-migrate/internal/report"
 	"github.com/P4ST4S/mcp-migrate/internal/spec"
 )
@@ -29,6 +30,8 @@ func Run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "analyze":
 		return runAnalyze(args[1:], stdout, stderr)
+	case "patch":
+		return runPatch(args[1:], stdout, stderr)
 	case "help", "-h", "--help":
 		printRootUsage(stdout)
 		return 0
@@ -108,9 +111,55 @@ func parseAnalyze(args []string, output io.Writer) (AnalyzeOptions, error) {
 	return opts, nil
 }
 
+func runPatch(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("patch", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	var path string
+	var write bool
+	fs.StringVar(&path, "path", "", "file or directory to patch (required)")
+	fs.BoolVar(&write, "write", false, "write changes to disk (default: dry-run)")
+
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if path == "" {
+		fmt.Fprintln(stderr, "patch: --path is required")
+		return 2
+	}
+
+	result, err := patch.Apply(patch.Options{Path: path, Write: write})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return 1
+	}
+
+	if len(result.Files) == 0 {
+		fmt.Fprintln(stdout, "no patchable occurrences found")
+		return 0
+	}
+
+	for _, fr := range result.Files {
+		if fr.Changed {
+			if write {
+				fmt.Fprintf(stdout, "patched %s\n", fr.Path)
+			} else {
+				fmt.Fprintf(stdout, "would patch %s\n", fr.Path)
+			}
+			if fr.Diff != "" {
+				fmt.Fprintln(stdout, fr.Diff)
+			}
+		}
+		if fr.Skipped > 0 {
+			fmt.Fprintf(stdout, "skipped %d ambiguous occurrence(s) in %s\n", fr.Skipped, fr.Path)
+		}
+	}
+	return 0
+}
+
 func printRootUsage(w io.Writer) {
 	fmt.Fprintln(w, "usage: mcp-migrate <command> [flags]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "commands:")
 	fmt.Fprintln(w, "  analyze    analyze an MCP server and emit findings")
+	fmt.Fprintln(w, "  patch      apply safe mechanical patches to source files")
 }
