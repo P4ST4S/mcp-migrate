@@ -1,79 +1,79 @@
 # Release Readiness — `mcp-migrate`
 
-Deux pistes distinctes. **Ne pas confondre « phases du PLAN cochées » avec « releasable ».** Les phases finies = le code compile, teste, tourne. Releasable = les garde-fous sont livrés, testé contre de vrais serveurs, et le périmètre est figé.
+Two distinct tracks. **Do not confuse “PLAN phases checked” with “releasable.”** Finished phases = the code builds, tests, and runs. Releasable = the guardrails are shipped, tested against real servers, and the scope is frozen.
 
-Principe directeur : **la maturité du tool suit la maturité de la spec.** On cible un RC qui peut bouger jusqu'au 28 juillet 2026 → tant que la spec n'est pas finale, on ne sort que des pré-releases honnêtes.
-
----
-
-## Piste A — `0.1.0-rc.1` (pré-release, à sortir PENDANT la fenêtre RC)
-
-Objectif : premier arrivé, feedback réel des implémenteurs, avant les codemods officiels. À sortir **dès que les cases ci-dessous sont vertes**, sans attendre le 28 juillet.
-
-### Bloquant — qualité de base
-- [ ] `go build ./...` et `go test ./...` verts en CI.
-- [ ] `analyze` fonctionne en **HTTP** et en **stdio** (pas seulement l'un des deux).
-- [ ] Sortie JSONL valide et pipe-able (`mcp-migrate analyze ... | jq` ne casse pas, y compris sur 0 finding).
-- [ ] Rendu Markdown stable (ordre déterministe, groupé par severity).
-
-### Bloquant — garde-fous (les deux conditions du go)
-- [ ] **Légende severity** rendue en tête de chaque rapport Markdown et documentée dans le schéma JSONL : `breaking` = incompatible avec un peer strict 2026-07-28, **pas** « casse le 28 juillet » ; les features `deprecated` restent fonctionnelles ≥ 12 mois.
-- [ ] **Tag `unverified`** sur tout numéro de SEP dont le `status` ≠ `Final` ou dont le fichier SEP n'a pas été trouvé. Aucun SEP non vérifié surfacé comme autoritatif.
-- [ ] Toute règle `pending-verification` est **non-fatale (report-only)** : elle ne produit pas de verdict pass/fail définitif tant que la spec n'est pas finale.
-
-### Bloquant — test hors fixtures
-- [ ] Testé contre **au moins 2 serveurs SDK officiels** réels (HTTP + stdio), pas seulement les fixtures `httptest`.
-- [ ] Testé contre **1–2 serveurs publics** existants.
-- [ ] Hidden-state detector : faux positifs identifiés et documentés ; un handle explicite retourné n'est pas flaggé à tort.
-- [ ] **Probes read-only confirmées non mutantes** sur un vrai serveur (le défaut read/list/discover tient en conditions réelles, l'opt-in tool-call mutant est bien explicite).
-
-### Bloquant — communication
-- [ ] README dit noir sur blanc : « cible le **RC** 2026-07-28, les règles évoluent avec le RC, pré-release ».
-- [ ] Version taguée `0.1.0-rc.1` (bump `-rc.N` à chaque mouvement du RC).
-- [ ] Périmètre annoncé = analyze live + hidden-state + patch sûr. Non-goals explicites : pas de `watch`, pas de scan multi-langage, pas de refacto sémantique du state. (Pour ne pas se voir reprocher des absences assumées.)
-
-### Souhaitable (peut glisser en `rc.2`)
-- [ ] Binaires GoReleaser (snapshot) téléchargeables.
-- [ ] Image Docker qui tourne (`mcp-migrate analyze --help`).
-- [ ] Quelques `--help` propres et un exemple de bout en bout dans le README.
+Guiding principle: **the tool’s maturity follows the spec’s maturity.** We are targeting an RC that can move until July 28, 2026 → as long as the spec is not final, we only ship honest pre-releases.
 
 ---
 
-## Piste B — `0.1.0` (stable, APRÈS le 28 juillet 2026)
+## Track A — `0.1.0-rc.1` (pre-release, to ship DURING the RC window)
 
-Objectif : caler la release stable sur la spec finale. À ne sortir qu'une fois la spec ratifiée **et** la passe de réconciliation faite.
+Goal: first out, real implementer feedback, before the official codemods. Ship **as soon as the boxes below are green**, without waiting for July 28.
 
-### Pré-requis spec
-- [ ] Spec finale 2026-07-28 publiée.
-- [ ] **Réconciliation complète** : chaque règle `pending-verification` repassée contre le changelog final ; statut mis à jour (`Final` / supprimée / corrigée).
-- [ ] Spot-check terminé des numéros SEP douteux (`SEP-414` trace context, et les SEP auth « no indexed SEP file found »). Tag `unverified` retiré uniquement pour ceux confirmés.
-- [ ] Cas de divergence connus tranchés contre le texte final :
-  - [ ] `logging/setLevel` retiré vs Logging déprécié (breaking vs deprecated).
-  - [ ] Discriminateur MRTR : `inputRequired` vs `input_required`.
-  - [ ] `cacheable-results-required` réellement MUST (breaking) ou SHOULD (warning).
-  - [ ] `x-mcp-header` réellement MUST côté client.
-  - [ ] Dérive de date SEP-2663 (`2026-06-30`) corrigée ou confirmée éditoriale.
+### Blocking — baseline quality
+- [ ] `go build ./...` and `go test ./...` are green in CI.
+- [ ] `analyze` works over **HTTP** and **stdio** (not just one of them).
+- [ ] Valid, pipeable JSONL output (`mcp-migrate analyze ... | jq` does not break, including on 0 findings).
+- [ ] Stable Markdown rendering (deterministic order, grouped by severity).
 
-### Pré-requis produit
-- [ ] Plus aucune règle `breaking` ne s'appuie sur une source non finale.
-- [ ] Suite de tests d'intégration verte contre serveurs réels mis à jour vers la spec finale.
-- [ ] Packaging finalisé : GoReleaser release (pas seulement snapshot), image Docker publiée.
-- [ ] CHANGELOG décrivant ce qui passe de `rc` à stable.
-- [ ] Promesse de `0.1.0` figée et documentée (ce qui est couvert / ce qui ne l'est pas).
+### Blocking — guardrails (the two go conditions)
+- [ ] **Severity legend** rendered at the top of every Markdown report and documented in the JSONL schema: `breaking` = incompatible with a strict 2026-07-28 peer, **not** “breaks on July 28”; `deprecated` features remain functional for ≥ 12 months.
+- [ ] **`unverified` tag** on any SEP number whose `status` ≠ `Final` or whose SEP file was not found. No unverified SEP is surfaced as authoritative.
+- [ ] Any `pending-verification` rule is **non-fatal (report-only)**: it does not produce a definitive pass/fail verdict while the spec is not final.
 
-### Garde rappel SemVer
-- [ ] On reste en `0.x` : l'API CLI et le schéma JSONL peuvent encore casser entre mineures. Documenter que la stabilité d'interface n'est promise qu'à partir de `1.0.0`.
+### Blocking — testing beyond fixtures
+- [ ] Tested against **at least 2 real official SDK servers** (HTTP + stdio), not just `httptest` fixtures.
+- [ ] Tested against **1–2 existing public servers**.
+- [ ] Hidden-state detector: false positives identified and documented; an explicit returned handle is not flagged by mistake.
+- [ ] **Read-only probes confirmed non-mutating** on a real server (the default read/list/discover holds in real conditions, the opt-in mutant tool call is clearly explicit).
+
+### Blocking — communication
+- [ ] README states plainly: “targets the **RC** 2026-07-28, rules evolve with the RC, pre-release”.
+- [ ] Version tagged `0.1.0-rc.1` (bump `-rc.N` with every RC movement).
+- [ ] Announced scope = live analyze + hidden-state + safe patch. Explicit non-goals: no `watch`, no multi-language scan, no semantic state refactor. (So nobody can complain about deliberate omissions.)
+
+### Nice to have (can slip to `rc.2`)
+- [ ] Downloadable GoReleaser binaries (snapshot).
+- [ ] Working Docker image (`mcp-migrate analyze --help`).
+- [ ] A few clean `--help` outputs and an end-to-end example in the README.
 
 ---
 
-## Definition of Done vs Releasable (résumé)
+## Track B — `0.1.0` (stable, AFTER July 28, 2026)
 
-| | Phases PLAN cochées | `0.1.0-rc.1` | `0.1.0` stable |
+Goal: align the stable release with the final spec. Ship only once the spec is ratified **and** reconciliation is done.
+
+### Spec prerequisites
+- [ ] Final 2026-07-28 spec published.
+- [ ] **Complete reconciliation**: every `pending-verification` rule rechecked against the final changelog; status updated (`Final` / removed / corrected).
+- [ ] Spot-check completed for doubtful SEP numbers (`SEP-414` trace context, and the auth SEPs with “no indexed SEP file found”). Remove the `unverified` tag only for those confirmed.
+- [ ] Known divergence cases resolved against the final text:
+  - [ ] `logging/setLevel` removed vs Logging deprecated (breaking vs deprecated).
+  - [ ] MRTR discriminator: `inputRequired` vs `input_required`.
+  - [ ] `cacheable-results-required` actually MUST (breaking) or SHOULD (warning).
+  - [ ] `x-mcp-header` actually MUST on the client side.
+  - [ ] SEP-2663 date drift (`2026-06-30`) corrected or confirmed editorial.
+
+### Product prerequisites
+- [ ] No `breaking` rule depends on a non-final source anymore.
+- [ ] Integration test suite green against updated real servers aligned to the final spec.
+- [ ] Packaging finalized: GoReleaser release (not just snapshot), published Docker image.
+- [ ] CHANGELOG describing what moves from `rc` to stable.
+- [ ] `0.1.0` promise frozen and documented (what is covered / what is not).
+
+### SemVer reminder
+- [ ] We remain on `0.x`: the CLI API and JSONL schema may still break between minors. Document that interface stability is only promised starting at `1.0.0`.
+
+---
+
+## Definition of Done vs Releasable (summary)
+
+| | PLAN phases checked | `0.1.0-rc.1` | `0.1.0` stable |
 |---|---|---|---|
-| Compile + teste + tourne | ✅ | ✅ | ✅ |
-| Garde-fous (légende, `unverified`, report-only) | — | ✅ | ✅ |
-| Testé contre vrais serveurs | — | ✅ | ✅ (spec finale) |
-| Spec finale + réconciliation `pending` | — | — | ✅ |
-| Packaging release + Docker publié | — | partiel | ✅ |
+| Build + test + run | ✅ | ✅ | ✅ |
+| Guardrails (legend, `unverified`, report-only) | — | ✅ | ✅ |
+| Tested against real servers | — | ✅ | ✅ (final spec) |
+| Final spec + `pending` reconciliation | — | — | ✅ |
+| Release packaging + published Docker | — | partial | ✅ |
 
-**Règle simple :** sors le `0.1.0-rc.x` dès que la colonne du milieu est verte — ne l'attends pas. Garde le `0.1.0` propre pour l'après-28-juillet.
+**Simple rule:** ship `0.1.0-rc.x` as soon as the middle column is green — do not wait for it. Keep `0.1.0` clean for after July 28.
