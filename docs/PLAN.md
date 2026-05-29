@@ -6,7 +6,7 @@ This plan is based on `docs/SPEC_RULES.md`. Any rule tagged `status: pending-ver
 
 ## Review Status
 
-Last updated: 2026-05-29.
+Last updated: 2026-05-30.
 
 - Phase 0 is implemented and committed in `6cd1ae8` (`chore: scaffold go cli`).
 - Phase 1 is implemented and committed in `4f9b030` (`feat: add report schema and rule registry`).
@@ -14,8 +14,8 @@ Last updated: 2026-05-29.
 - Phase 3 is implemented in the current branch.
 - Phase 4 is implemented in the current branch.
 - Phase 5 is implemented in the current branch.
-- Phase 6 and later have not been started.
-- Validation command used after Phase 5: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server`; stdio integration tests launch helper processes. Both may require extra permissions in sandboxed environments.
+- Phase 6 is implemented in the current branch.
+- Validation command: `go build ./...` and `go test ./...`. The HTTP integration tests use `httptest.Server`; stdio integration tests launch helper processes. Both may require extra permissions in sandboxed environments.
 
 ## Product Decisions
 
@@ -220,6 +220,8 @@ Done:
 
 ## Phase 6: Packaging and CI Hardening
 
+Status: implemented.
+
 Complexity: M
 
 Dependencies: Phases 0-5 as relevant.
@@ -233,9 +235,19 @@ Work:
 
 Done:
 
-- CI runs `go test ./...` and `go build ./...`.
-- Snapshot release builds produce local artifacts.
-- Docker image runs `mcp-migrate analyze --help`.
+- `go.mod` declares `go 1.21` — the minimum version that covers all language features and
+  standard-library packages used in production and test code (`slices` package, introduced
+  in 1.21, is used in test files only).
+- CI (`.github/workflows/ci.yml`) uses `go-version-file: go.mod` so the runner always
+  matches the declared minimum. A separate `docker` job builds the image and smoke-tests it
+  with `docker run --rm mcp-migrate:ci analyze --help` after `test` passes.
+- Dockerfile uses `golang:1.21-alpine` as the build stage (matches `go.mod`) and
+  `gcr.io/distroless/static-debian12` as the runtime stage (no shell, no libc). Build flags:
+  `CGO_ENABLED=0 -trimpath` for a reproducible, dependency-free binary.
+- GoReleaser (`.goreleaser.yml`) produces `linux/amd64`, `linux/arm64`, `darwin/amd64`,
+  `darwin/arm64` archives with checksums. `CGO_ENABLED=0` and `-trimpath` are set.
+- Docker image verified locally: `docker run --rm mcp-migrate:local analyze --help` prints
+  the flag usage (exit 2 is normal for `flag.ContinueOnError` on `-h`/`--help`).
 
 ## v0.1 Rule Priorities
 

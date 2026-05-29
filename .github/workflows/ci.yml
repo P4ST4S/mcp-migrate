@@ -9,8 +9,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: go.mod   # pins to the version declared in go.mod
+
       - run: go test ./...
       - run: go build ./...
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t mcp-migrate:ci .
+
+      - name: Smoke-test Docker image
+        run: docker run --rm mcp-migrate:ci analyze --help
