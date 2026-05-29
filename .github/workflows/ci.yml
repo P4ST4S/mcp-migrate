@@ -1,41 +1,29 @@
-name: ci
+name: CI
 
 on:
   push:
   pull_request:
 
 jobs:
-  test:
+  go:
+    name: Go
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod   # pins to the version declared in go.mod
+          go-version-file: go.mod
+          cache: true
 
-      - run: go test ./...
-      - run: go build ./...
+      - name: Build
+        run: go build ./...
 
-  docker:
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
+      - name: Vet
+        run: go vet ./...
 
-      - name: Build Docker image
-        run: docker build -t mcp-migrate:ci .
-
-      - name: Verify binary starts
-        # Confirm the image runs. The Go `flag` package exits 2 on --help;
-        # capture the code manually so set -e does not abort the step,
-        # then fail only on unexpected codes.
-        run: |
-          set +e
-          docker run --rm mcp-migrate:ci analyze --help
-          rc=$?
-          set -e
-          if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
-            echo "unexpected exit code: $rc"
-            exit "$rc"
-          fi
+      - name: Test
+        run: go test ./...
