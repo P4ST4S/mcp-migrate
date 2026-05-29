@@ -111,7 +111,7 @@ In practice, `breaking` means incompatible with a strict `2026-07-28` peer, not 
 JSONL output uses the `mcp-migrate/finding/v1` schema. Each line is an independent JSON object:
 
 ```json
-{"schema":"mcp-migrate/finding/v1","rule":"server-discover-required","sep":{"id":"SEP-2575","status":"Accepted","verification":"unverified","source":"https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2575-stateless-mcp.md"},"severity":"breaking","enforcement":"enforced","spec_target":"2026-07-28","source":{"mode":"live","ref":"http://localhost:3000/mcp"},"message":"Server does not expose the stateless server/discover RPC.","remediation":"Implement server/discover with supported versions, server capabilities, and server identity.","autofix":false,"status":"confirmed"}
+{"schema":"mcp-migrate/finding/v1","rule":"server-discover-required","sep":{"id":"SEP-2575","status":"Accepted","verification":"unverified","source":"https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2575-stateless-mcp.md"},"severity":"breaking","enforcement":"report-only","spec_target":"2026-07-28","source":{"mode":"live","ref":"http://localhost:3000/mcp"},"message":"Server does not expose the stateless server/discover RPC.","remediation":"Implement server/discover with supported versions, server capabilities, and server identity.","autofix":false,"status":"confirmed"}
 ```
 
 Empty output is valid: it means no findings were emitted.
