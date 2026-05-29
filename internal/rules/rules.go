@@ -31,7 +31,7 @@ type Rule struct {
 	// probing (comparing two observations) rather than direct observation of a
 	// protocol artifact. Differential evidence is faillible — list variation
 	// may be caused by time-based content, non-deterministic ordering,
-	// pagination cursors, or eventually-consistent backends — so findings
+	// pagination csors, or eventually-consistent backends — so findings
 	// produced by these rules are always report-only regardless of SEP status.
 	InferentialEvidence bool
 	Message             string
