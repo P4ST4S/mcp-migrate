@@ -27,5 +27,15 @@ jobs:
         run: docker build -t mcp-migrate:ci .
 
       - name: Smoke-test Docker image
-        # `flag` exits 2 on --help; that is expected behavior, not a failure.
-        run: docker run --rm mcp-migrate:ci analyze --help; [ $? -le 2 ]
+        # The Go `flag` package exits 2 on --help; that is expected, not a crash.
+        # Capture the exit code manually so set -e does not abort the step,
+        # then fail on anything other than 0 or 2.
+        run: |
+          set +e
+          docker run --rm mcp-migrate:ci analyze --help
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 2 ]; then
+            echo "unexpected exit code: $rc"
+            exit "$rc"
+          fi
