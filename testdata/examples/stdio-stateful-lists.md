@@ -14,7 +14,7 @@
 
 - Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2567` (`Final`, `verified`)
 
 Stateful workflow is not represented by explicit handles.
@@ -27,7 +27,7 @@ Remediation: Mint opaque handles in tool results and require them as ordinary ar
 
 - Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2567` (`Final`, `verified`)
 
 Stateful workflow is not represented by explicit handles.
@@ -40,7 +40,7 @@ Remediation: Mint opaque handles in tool results and require them as ordinary ar
 
 - Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2567` (`Final`, `verified`)
 
 Stateful workflow is not represented by explicit handles.

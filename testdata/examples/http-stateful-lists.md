@@ -12,9 +12,9 @@
 
 ## session-dependent-lists-removed
 
-- Severity: `breaking`
+- Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2567` (`Final`, `verified`)
 
 List results appear to vary by connection or hidden session state.
@@ -25,9 +25,9 @@ Remediation: Make tools/list, resources/list, and prompts/list independent of co
 
 ## session-dependent-lists-removed
 
-- Severity: `breaking`
+- Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2567` (`Final`, `verified`)
 
 List results appear to vary by connection or hidden session state.
@@ -38,9 +38,9 @@ Remediation: Make tools/list, resources/list, and prompts/list independent of co
 
 ## session-dependent-lists-removed
 
-- Severity: `breaking`
+- Severity: `warning`
 - Spec target: `2026-07-28`
-- Enforcement: `enforced`
+- Enforcement: `report-only`
 - SEP: `SEP-2567` (`Final`, `verified`)
 
 List results appear to vary by connection or hidden session state.

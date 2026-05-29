@@ -78,7 +78,7 @@ func TestHTTPAnalyzeDetectsSessionDependentLists(t *testing.T) {
 	}
 
 	assertFinding(t, findings, "session-dependent-lists-removed")
-	assertFindingEnforcement(t, findings, "session-dependent-lists-removed", report.EnforcementEnforced)
+	assertFindingEnforcement(t, findings, "session-dependent-lists-removed", report.EnforcementReportOnly)
 	assertNoFinding(t, findings, "explicit-state-handles")
 	assertNoToolCall(t, fixture.Methods())
 }

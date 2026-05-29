@@ -17,7 +17,7 @@ func TestEvaluateHTTPTraceDetectsListDrift(t *testing.T) {
 	}, registry)
 
 	assertFinding(t, findings, "session-dependent-lists-removed")
-	assertFindingEnforcement(t, findings, "session-dependent-lists-removed", report.EnforcementEnforced)
+	assertFindingEnforcement(t, findings, "session-dependent-lists-removed", report.EnforcementReportOnly)
 }
 
 func TestEvaluateHTTPTraceIgnoresExplicitHandleOnlyDrift(t *testing.T) {

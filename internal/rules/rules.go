@@ -27,12 +27,22 @@ type Rule struct {
 	Autofixable                       bool
 	Status                            string
 	EnforceUnverifiedSEPJustification string
+	// InferentialEvidence marks rules whose detection relies on differential
+	// probing (comparing two observations) rather than direct observation of a
+	// protocol artifact. Differential evidence is faillible — list variation
+	// may be caused by time-based content, non-deterministic ordering,
+	// pagination cursors, or eventually-consistent backends — so findings
+	// produced by these rules are always report-only regardless of SEP status.
+	InferentialEvidence               bool
 	Message                           string
 	Remediation                       string
 }
 
 func (r Rule) Enforcement() report.Enforcement {
 	if r.Status == StatusPendingVerification {
+		return report.EnforcementReportOnly
+	}
+	if r.InferentialEvidence {
 		return report.EnforcementReportOnly
 	}
 	sep := r.SEPRef()
@@ -195,22 +205,24 @@ var defaultRules = []Rule{
 		Remediation: "Replace protocol sessions with explicit application handles passed through tool arguments and results.",
 	},
 	{
-		ID:          "session-dependent-lists-removed",
-		SEP:         sep("SEP-2567", "Final", "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2567-sessionless-mcp.md", true),
-		Severity:    report.SeverityBreaking,
-		AppliesTo:   []string{"live"},
-		Status:      StatusConfirmed,
-		Message:     "List results appear to vary by connection or hidden session state.",
-		Remediation: "Make tools/list, resources/list, and prompts/list independent of connection/session state.",
+		ID:                  "session-dependent-lists-removed",
+		SEP:                 sep("SEP-2567", "Final", "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2567-sessionless-mcp.md", true),
+		Severity:            report.SeverityWarning,
+		AppliesTo:           []string{"live"},
+		Status:              StatusConfirmed,
+		InferentialEvidence: true,
+		Message:             "List results appear to vary by connection or hidden session state.",
+		Remediation:         "Make tools/list, resources/list, and prompts/list independent of connection/session state.",
 	},
 	{
-		ID:          "explicit-state-handles",
-		SEP:         sep("SEP-2567", "Final", "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2567-sessionless-mcp.md", true),
-		Severity:    report.SeverityWarning,
-		AppliesTo:   []string{"live"},
-		Status:      StatusConfirmed,
-		Message:     "Stateful workflow is not represented by explicit handles.",
-		Remediation: "Mint opaque handles in tool results and require them as ordinary arguments on subsequent calls.",
+		ID:                  "explicit-state-handles",
+		SEP:                 sep("SEP-2567", "Final", "https://github.com/modelcontextprotocol/modelcontextprotocol/blob/main/seps/2567-sessionless-mcp.md", true),
+		Severity:            report.SeverityWarning,
+		AppliesTo:           []string{"live"},
+		Status:              StatusConfirmed,
+		InferentialEvidence: true,
+		Message:             "Stateful workflow is not represented by explicit handles.",
+		Remediation:         "Mint opaque handles in tool results and require them as ordinary arguments on subsequent calls.",
 	},
 	{
 		ID:          "http-standard-headers",

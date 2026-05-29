@@ -21,10 +21,12 @@ func TestExamplesAreCurrent(t *testing.T) {
 		{name: "http-mixed", findings: exampleHTTPFindings(t, mixedProfile)},
 		{name: "http-resource-not-found", findings: exampleHTTPFindingsWithOptions(t, resourceNotFoundProfile, Options{AllowResourceRead: true})},
 		{name: "http-stateful-lists", findings: exampleHTTPFindings(t, statefulListProfile)},
+		{name: "http-explicit-handle-lists", findings: exampleHTTPFindings(t, explicitHandleListProfile)},
 		{name: "stdio-compliant", findings: exampleSTDIOFindings(t, "compliant")},
 		{name: "stdio-legacy", findings: exampleSTDIOFindings(t, "legacy")},
 		{name: "stdio-mixed", findings: exampleSTDIOFindings(t, "mixed")},
 		{name: "stdio-stateful-lists", findings: exampleSTDIOFindings(t, "stateful")},
+		{name: "stdio-explicit-handle-lists", findings: exampleSTDIOFindings(t, "explicit-handle")},
 	}
 
 	for _, example := range examples {
