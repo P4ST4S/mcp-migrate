@@ -2,7 +2,7 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/P4ST4S/mcp-migrate/ci.yml?branch=main&label=CI)](https://github.com/P4ST4S/mcp-migrate/actions)
 [![Go Report Card](https://goreportcard.com/badge/github.com/P4ST4S/mcp-migrate)](https://goreportcard.com/report/github.com/P4ST4S/mcp-migrate)
-[![Go version](https://img.shields.io/badge/Go-1.21+-00ADD8?logo=go)](https://go.dev/doc/install)
+[![Go version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/doc/install)
 [![License](https://img.shields.io/github/license/P4ST4S/mcp-migrate)](./LICENSE)
 
 Live conformance analyzer and safe patcher for the MCP `2026-07-28` spec. Probes a running MCP server — over stdio or Streamable HTTP — and reports what needs to change, with severity, remediation, and machine-readable JSONL output.
@@ -43,7 +43,7 @@ Docker:
 docker run --rm ghcr.io/p4st4s/mcp-migrate analyze --transport http --url http://host.docker.internal:3000/mcp
 ```
 
-Requires Go 1.21+.
+Requires Go 1.24+.
 
 ## Quick start
 

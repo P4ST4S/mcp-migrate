@@ -1,3 +1,3 @@
 module github.com/P4ST4S/mcp-migrate
 
-go 1.21
+go 1.24
